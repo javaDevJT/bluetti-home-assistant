@@ -17,7 +17,7 @@ import voluptuous as vol
 
 from .api.product_client import ProductClient
 from .const import CONF_HUB_A1_SERIALS, DOMAIN, INTEGRATION_NAME,EVENT_TOKEN_EXPIRED,NOTIFY_ID_TOKEN_EXPIRED
-from .hub_a1 import parse_hub_a1_serials
+from .hub_a1 import HubA1LookupError, parse_hub_a1_serials
 
 __LOGGER__ = logging.getLogger(__name__)
 
@@ -76,6 +76,13 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
             try:
                 for serial in hub_a1_serials:
                     hub_a1_products.append(await self._product_client.get_hub_a1_product(serial))
+            except HubA1LookupError as exc:
+                __LOGGER__.warning("Failed to load Hub A1 serial through app API: %s", exc)
+                return self.async_show_form(
+                    step_id="select_devices",
+                    data_schema=self._select_devices_schema(user_input.get(CONF_HUB_A1_SERIALS, "")),
+                    errors={"base": "cannot_connect"},
+                )
             except Exception as exc:
                 __LOGGER__.warning("Failed to load Hub A1 serial through app API: %s", exc.__class__.__name__)
                 return self.async_show_form(

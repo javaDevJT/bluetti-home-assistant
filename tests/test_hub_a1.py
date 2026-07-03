@@ -91,6 +91,52 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(product["online"], "0")
         self.assertEqual(product["stateList"][0]["fnCode"], "onLine")
 
+    def test_has_hub_a1_telemetry_detects_fallback_payloads(self):
+        self.assertFalse(
+            self.hub_a1.has_hub_a1_telemetry(
+                realtime={},
+                last_alive={},
+                battery_details=[],
+                pv_details=[],
+                load_details=[],
+                grid_details=[],
+            )
+        )
+        self.assertTrue(
+            self.hub_a1.has_hub_a1_telemetry(
+                realtime={"batterySoc": "9"},
+                last_alive={},
+                battery_details=[],
+                pv_details=[],
+                load_details=[],
+                grid_details=[],
+            )
+        )
+        self.assertTrue(
+            self.hub_a1.has_hub_a1_telemetry(
+                realtime={},
+                last_alive={},
+                battery_details=[],
+                pv_details=[{"power": "0", "voltage": "0"}],
+                load_details=[],
+                grid_details=[],
+            )
+        )
+
+    def test_describe_hub_a1_lookup_response_avoids_identifiers(self):
+        class Response:
+            msgCode = -2
+            code = -2
+            message = "Invalid serial TEST-HUB-A1-SERIAL"
+            data = None
+
+        description = self.hub_a1.describe_hub_a1_lookup_response(Response())
+
+        self.assertIn("msgCode=-2", description)
+        self.assertIn("code=-2", description)
+        self.assertIn("message=Invalid serial <redacted>", description)
+        self.assertNotIn(TEST_HUB_SERIAL, description)
+
 
 if __name__ == "__main__":
     unittest.main()

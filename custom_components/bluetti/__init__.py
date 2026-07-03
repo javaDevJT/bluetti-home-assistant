@@ -17,7 +17,7 @@ from .oauth import AsyncConfigEntryAuth,AuthTokenRefresh
 from .api.bluetti import APPLICATION_PROFILE
 from .api.product_client import ProductClient
 from .api.websocket import StompClient
-from .hub_a1 import parse_hub_a1_serials
+from .hub_a1 import HubA1LookupError, parse_hub_a1_serials
 from .profile.application_profile import ApplicationProfile
 from .const import CONF_HUB_A1_SERIALS, DOMAIN
 from .model.product import UserProduct
@@ -94,6 +94,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
             continue
         try:
             product = await product_client.get_hub_a1_product(serial)
+        except HubA1LookupError as exc:
+            __LOGGER__.warning("Unable to load Hub A1 device through app API: %s", exc)
+            continue
         except Exception as exc:
             __LOGGER__.warning("Unable to load Hub A1 device through app API: %s", exc.__class__.__name__)
             continue

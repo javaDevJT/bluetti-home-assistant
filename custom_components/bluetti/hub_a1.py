@@ -14,6 +14,10 @@ SENSOR_TYPE_POWER = "SensorDeviceClass.POWER"
 SENSOR_TYPE_VOLTAGE = "SensorDeviceClass.VOLTAGE"
 
 
+class HubA1LookupError(RuntimeError):
+    """Raised when a Hub A1 cannot be resolved from app or telemetry APIs."""
+
+
 def parse_hub_a1_serials(value: Any) -> list[str]:
     """Parse a comma/whitespace separated Hub A1 serial field."""
     if value is None:
@@ -62,6 +66,48 @@ def build_hub_a1_product_data(
         "name": app_device.get("name") or serial,
         "isBindByCurUser": "1",
     }
+
+
+def has_hub_a1_telemetry(
+    *,
+    realtime: dict[str, Any] | None,
+    last_alive: dict[str, Any] | None,
+    battery_details: list[dict[str, Any]] | None,
+    pv_details: list[dict[str, Any]] | None,
+    load_details: list[dict[str, Any]] | None,
+    grid_details: list[dict[str, Any]] | None,
+) -> bool:
+    """Return true when any Hub A1 telemetry endpoint returned usable data."""
+    return any(
+        bool(value)
+        for value in (
+            realtime,
+            last_alive,
+            battery_details,
+            pv_details,
+            load_details,
+            grid_details,
+        )
+    )
+
+
+def describe_hub_a1_lookup_response(response: Any) -> str:
+    """Return a safe, identifier-redacted description of a BLUETTI response."""
+    parts = []
+    for key in ("msgCode", "code", "message"):
+        if hasattr(response, key):
+            value = _redact_identifier_text(str(getattr(response, key)))
+            parts.append(f"{key}={value}")
+    data = getattr(response, "data", None)
+    if isinstance(data, dict):
+        parts.append(f"data_keys={len(data)}")
+    elif isinstance(data, list):
+        parts.append(f"data_len={len(data)}")
+    elif data is None:
+        parts.append("data=None")
+    else:
+        parts.append(f"data_type={type(data).__name__}")
+    return ", ".join(parts) if parts else type(response).__name__
 
 
 def build_hub_a1_state_list(
@@ -155,6 +201,10 @@ def _online_value(app_device: dict[str, Any], last_alive: dict[str, Any]) -> str
     if str(network_connect) == "0":
         return "0"
     return "1" if last_alive else "0"
+
+
+def _redact_identifier_text(value: str) -> str:
+    return re.sub(r"\b[A-Z0-9][A-Z0-9_-]{7,}\b", "<redacted>", value)
 
 
 def _binary_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | None:

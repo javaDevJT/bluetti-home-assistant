@@ -9,6 +9,9 @@ class UnifyResponse(BaseModel, Generic[T]):
 
     msgId: str
     msgCode: int
+    code: int | None = None
+    message: str | None = None
+    error: str | None = None
     data: T | None = None
 
     # def __init__(self, msgId: str, msgCode: int):

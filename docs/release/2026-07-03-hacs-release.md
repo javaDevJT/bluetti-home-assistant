@@ -17,10 +17,21 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Release tag: `v1.1.0`
+- Latest release tag: `v1.1.1`
 - Integration domain: `bluetti`
-- Integration version: `1.1.0`
+- Integration version: `1.1.1`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
 archive.
+
+## v1.1.1 Patch
+
+The initial `v1.1.0` Hub A1 setup path treated an empty/non-OK
+`deviceRemoteSearch` response as fatal before trying the read-only telemetry
+endpoints. `v1.1.1` keeps `deviceRemoteSearch` as the preferred identity source
+but falls back to Hub A1 telemetry when that lookup does not return device data.
+
+The patch also preserves BLUETTI response `code` and `message` fields and logs
+a redacted response summary for Hub A1 setup failures instead of only
+`RuntimeError`.
