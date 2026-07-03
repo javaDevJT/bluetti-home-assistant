@@ -17,8 +17,9 @@ from .oauth import AsyncConfigEntryAuth,AuthTokenRefresh
 from .api.bluetti import APPLICATION_PROFILE
 from .api.product_client import ProductClient
 from .api.websocket import StompClient
+from .hub_a1 import parse_hub_a1_serials
 from .profile.application_profile import ApplicationProfile
-from .const import DOMAIN
+from .const import CONF_HUB_A1_SERIALS, DOMAIN
 from .model.product import UserProduct
 
 __LOGGER__ = logging.getLogger(__name__)
@@ -32,6 +33,18 @@ type BluettiConfigEntry = ConfigEntry[BluettiData]
 
 
 # type Oauth2ConfigEntry = ConfigEntry[api.AsyncConfigEntryAuth]
+
+
+def _serialize_products(products):
+    serialized = []
+    for product in products:
+        if hasattr(product, "model_dump"):
+            serialized.append(product.model_dump())
+        elif hasattr(product, "__dict__"):
+            serialized.append(product.__dict__)
+        else:
+            serialized.append(product)
+    return serialized
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> bool:
@@ -72,6 +85,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
     # products = await product_client.get_user_products()
     # print(products.data[0].__class__)
     # print(products.data)
+
+    hub_a1_serials = parse_hub_a1_serials(entry.options.get(CONF_HUB_A1_SERIALS))
+    product_sns = {p.sn for p in all_products}
+    products_changed = False
+    for serial in hub_a1_serials:
+        if serial in product_sns:
+            continue
+        try:
+            product = await product_client.get_hub_a1_product(serial)
+        except Exception as exc:
+            __LOGGER__.warning("Unable to load Hub A1 device through app API: %s", exc.__class__.__name__)
+            continue
+        all_products.append(product)
+        product_sns.add(product.sn)
+        products_changed = True
+
+    if products_changed:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, "products": _serialize_products(all_products)},
+        )
 
     selected_products = [p for p in all_products if p.sn in enabled_devices]
 

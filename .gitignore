@@ -8,6 +8,13 @@ __pycache__/
 
 # Environment configuration file
 application-*.yaml
+.DS_Store
+
+# Local BLUETTI diagnostic captures
+artifacts/
+artifacts/bluetti-captures/
+docs/discovery/
+docs/superpowers/
 
 # Distribution / packaging
 .Python

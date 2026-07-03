@@ -3,6 +3,14 @@
     "step": {
       "pick_implementation": {
         "title": "[%key:common::config_flow::title::oauth2_pick_implementation%]"
+      },
+      "select_devices": {
+        "title": "Select BLUETTI devices",
+        "data": {
+          "devices": "Devices",
+          "hub_a1_serials": "Hub A1 serial numbers"
+        },
+        "description": "Select visible BLUETTI devices and optionally enter Hub A1 serial numbers separated by commas, spaces, or new lines."
       }
     },
     "abort": {
@@ -21,6 +29,10 @@
     },
     "create_entry": {
       "default": "[%key:common::config_flow::create_entry::authenticated%]"
+    },
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "no_devices_available": "Select at least one device or enter a Hub A1 serial number."
     }
   }
 }

@@ -8,7 +8,12 @@ supported by BLUETTI official. It allows you to use BLUETTI smart Power Station
 devices in Home Assistant.
 
 The Integration's github repository is:
-[https://github.com/bluetti-official/bluetti-home-assistant](https://github.com/bluetti-official/bluetti-home-assistant).
+[https://github.com/javaDevJT/bluetti-home-assistant](https://github.com/javaDevJT/bluetti-home-assistant).
+
+This fork adds read-only Hub A1 support for Apex 300 systems that BLUETTI's
+Home Assistant `/devices` API does not currently list. Hub A1 support is based
+on BLUETTI app API telemetry discovered from live account captures and does not
+use the `bindDevices` write endpoint for manually entered Hub A1 serials.
 
 ## ✨ Features
 
@@ -26,6 +31,7 @@ The Integration's github repository is:
 - ✅ Grid Input Power
 - ✅ AC Ouput Power
 - ✅ DC Ouput Power
+- ✅ Hub A1 read-only telemetry for Apex 300 systems
 
 ## 🎮 Power Station Support List
 
@@ -94,7 +100,7 @@ can be installed.
 
 2. Add repository and make the type selection:
    - **Repository**:
-     [https://github.com/bluetti-official/bluetti-home-assistant.git](https://github.com/bluetti-official/bluetti-home-assistant.git)
+     [https://github.com/javaDevJT/bluetti-home-assistant](https://github.com/javaDevJT/bluetti-home-assistant)
    - **Type:** Integration
 
 3. Then, on the "Integration" page of HACS, you can see the `BLUETTI`
@@ -129,7 +135,9 @@ can be installed.
    <img src="./doc/images/5-oauth_link_account_to_ha.png">
 
 6. Select your BLUETTI power station devices that need to be used and managed in
-   Home Assistant.
+   Home Assistant. If your Hub A1/Apex 300 system is missing from the device
+   list, enter the Hub A1 serial number in the **Hub A1 serial numbers** field.
+   Multiple serial numbers can be separated with commas, spaces, or new lines.
 
    <img src="./doc/images/6-choose_bluetti_devices.png" width="880">
    <img src="./doc/images/7-bluetti_device_in_ha.png" width="880">
@@ -163,4 +171,4 @@ Please check the **network**, **ports** and **firewall** to ensure that
 ## 📮 Support & Feedback
 
 💬 Have any problems or suggestions? Create an issue on GitHub:
-[https://github.com/bluetti-official/bluetti-home-assistant/issues](https://github.com/bluetti-official/bluetti-home-assistant/issues)
+[https://github.com/javaDevJT/bluetti-home-assistant/issues](https://github.com/javaDevJT/bluetti-home-assistant/issues)

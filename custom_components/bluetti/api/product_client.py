@@ -5,6 +5,7 @@ import aiohttp
 from .bluetti import Bluetti
 from .unify_response import UnifyResponse
 from ..const import Method
+from ..hub_a1 import build_hub_a1_product_data
 from ..model.product import UserProduct
 
 
@@ -48,6 +49,99 @@ class ProductClient(Bluetti):
             "/api/bluiotdata/ha/v1/deviceStates",
             params={'sns': sns}
         )
+
+    async def get_app_device_by_sn(self, device_sn: str) -> UnifyResponse[dict]:
+        """Look up a BLUETTI app-side device by serial number."""
+        return await self._request(
+            dict,
+            Method.GET,
+            "/api/blusmartprod/device/basic/v1/deviceRemoteSearch",
+            params={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_realtime_data(self, device_sn: str) -> UnifyResponse[dict]:
+        """Get Hub A1 realtime AECC telemetry."""
+        return await self._request(
+            dict,
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceRealTimeData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_device_last_alive(self, device_sn: str) -> UnifyResponse[dict]:
+        """Get Hub A1 last-alive realtime telemetry."""
+        return await self._request(
+            dict,
+            Method.POST,
+            "/api/bluiotdata/realtime/v1/getDeviceLastAlive",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_battery_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 battery detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceBatteryDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_pv_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 PV detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDevicePvDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_load_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 load detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceLoadDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_grid_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 grid detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceGridDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_hub_a1_product(self, device_sn: str) -> UserProduct:
+        """Build a UserProduct-shaped Hub A1 object from read-only app APIs."""
+        app_device_response = await self.get_app_device_by_sn(device_sn)
+        if not app_device_response.has_data() or not isinstance(app_device_response.data, dict):
+            raise RuntimeError("Hub A1 app lookup did not return device data")
+        app_device = app_device_response.data
+
+        product_data = build_hub_a1_product_data(
+            device_sn,
+            app_device=app_device,
+            realtime=await self._optional_response_data(self.get_aecc_realtime_data, device_sn, {}),
+            last_alive=await self._optional_response_data(self.get_device_last_alive, device_sn, {}),
+            battery_details=await self._optional_response_data(self.get_aecc_battery_detail_data, device_sn, []),
+            pv_details=await self._optional_response_data(self.get_aecc_pv_detail_data, device_sn, []),
+            load_details=await self._optional_response_data(self.get_aecc_load_detail_data, device_sn, []),
+            grid_details=await self._optional_response_data(self.get_aecc_grid_detail_data, device_sn, []),
+        )
+        return UserProduct.model_validate(product_data)
+
+    async def _optional_response_data(self, request, device_sn: str, default):
+        try:
+            response = await request(device_sn)
+        except Exception as exc:
+            self.logger.warning("Optional Hub A1 telemetry request failed: %s", exc.__class__.__name__)
+            return default
+        if not response.is_ok():
+            self.logger.warning("Optional Hub A1 telemetry request returned msgCode=%s", response.msgCode)
+            return default
+        return response.data if response.data is not None else default
 
     async def control_device(self, payload: str = None):
         """

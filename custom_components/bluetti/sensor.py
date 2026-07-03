@@ -53,6 +53,16 @@ SENSOR_MAP: dict[str, BaseSensorMetaInfo] = {
         "device_class":SensorDeviceClass.POWER,
         "state_class":SensorStateClass.MEASUREMENT,
         "unit": "W"
+    },
+    "SensorDeviceClass.VOLTAGE":{
+        "device_class":SensorDeviceClass.VOLTAGE,
+        "state_class":SensorStateClass.MEASUREMENT,
+        "unit": "V"
+    },
+    "SensorDeviceClass.ENERGY":{
+        "device_class":SensorDeviceClass.ENERGY,
+        "state_class":SensorStateClass.TOTAL_INCREASING,
+        "unit": "kWh"
     }
 }
 
@@ -61,6 +71,18 @@ BINARY_SENSOR_MAP = {
     "onLine": {
         "device_class": BinarySensorDeviceClass.CONNECTIVITY,
         "name": "Online",
+    },
+    "HubA1AcSwitch": {
+        "device_class": None,
+        "name": "AC Switch",
+    },
+    "HubA1DcSwitch": {
+        "device_class": None,
+        "name": "DC Switch",
+    },
+    "HubA1GridSwitch": {
+        "device_class": None,
+        "name": "Grid Switch",
     }
 }
 

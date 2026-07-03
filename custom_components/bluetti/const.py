@@ -3,6 +3,7 @@ from enum import Enum
 
 DOMAIN: str = "bluetti"
 INTEGRATION_NAME: str = 'BLUETTI'
+CONF_HUB_A1_SERIALS: str = "hub_a1_serials"
 
 EVENT_TOKEN_EXPIRED: str ="onTokenExpired"
 NOTIFY_ID_TOKEN_EXPIRED: str ="notifyTokenExpire"
