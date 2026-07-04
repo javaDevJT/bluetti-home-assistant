@@ -140,6 +140,81 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["SetCtrlAc"]["fnValue"], "1")
         self.assertEqual(states_by_code["SetCtrlDc"]["fnValue"], "0")
 
+    def test_select_preferred_app_device_payload_uses_home_last_alive_over_direct_zeros(self):
+        direct = {
+            "sn": TEST_APEX_SERIAL,
+            "model": "EL100V2",
+            "networkConnect": 1,
+            "batSOC": "0",
+            "powerAcOut": "0",
+            "powerPvIn": "0",
+        }
+        home = {
+            "sn": TEST_APEX_SERIAL,
+            "model": "EL100V2",
+            "networkConnect": 1,
+            "batSOC": "0",
+            "powerAcOut": "0",
+            "powerPvIn": "0",
+            "lastAlive": {
+                "allFieldIsNull": False,
+                "batterySoc": "89",
+                "powerAcOut": "128",
+                "powerPvIn": "76",
+            },
+        }
+
+        selected = self.hub_a1.select_preferred_app_device_payload(
+            TEST_APEX_SERIAL,
+            direct,
+            [home],
+        )
+
+        self.assertIs(selected, home)
+
+    def test_select_hub_a1_related_app_device_prefers_apex_family_telemetry(self):
+        fp = {
+            "sn": "TEST-FP-SERIAL",
+            "model": "FP",
+            "lastAlive": {
+                "batterySoc": "65",
+                "powerAcOut": "66",
+                "powerPvIn": "12",
+            },
+        }
+        apex = {
+            "sn": TEST_APEX_SERIAL,
+            "model": "EL100V2",
+            "lastAlive": {
+                "allFieldIsNull": False,
+                "batterySoc": "89",
+                "powerAcOut": "128",
+                "powerPvIn": "76",
+            },
+        }
+
+        selected = self.hub_a1.select_hub_a1_related_app_device([fp, apex])
+
+        self.assertIs(selected, apex)
+
+    def test_select_hub_a1_related_app_device_ignores_null_last_alive_payloads(self):
+        selected = self.hub_a1.select_hub_a1_related_app_device(
+            [
+                {
+                    "sn": TEST_APEX_SERIAL,
+                    "model": "EL100V2",
+                    "lastAlive": {
+                        "allFieldIsNull": True,
+                        "batterySoc": "0",
+                        "powerAcOut": "0",
+                        "powerPvIn": "0",
+                    },
+                }
+            ]
+        )
+
+        self.assertEqual(selected, {})
+
     def test_build_app_device_state_overrides_returns_empty_without_app_payload(self):
         self.assertEqual(self.hub_a1.build_app_device_state_overrides({}), [])
         self.assertEqual(self.hub_a1.build_app_device_state_overrides(None), [])
@@ -217,6 +292,25 @@ class HubA1Tests(unittest.TestCase):
         self.assertIn("ACLoadAllTotalPower=128", summary)
         self.assertNotIn(TEST_HUB_SERIAL, summary)
         self.assertNotIn(TEST_APEX_SERIAL, summary)
+
+    def test_has_meaningful_state_values_ignores_online_only(self):
+        self.assertFalse(
+            self.hub_a1.has_meaningful_state_values(
+                [
+                    {"fnCode": "onLine", "fnValue": "1"},
+                    {"fnCode": "HubA1BatterySoc", "fnValue": "0"},
+                    {"fnCode": "HubA1AcPowerOut", "fnValue": "0"},
+                ]
+            )
+        )
+        self.assertTrue(
+            self.hub_a1.has_meaningful_state_values(
+                [
+                    {"fnCode": "onLine", "fnValue": "1"},
+                    {"fnCode": "HubA1BatterySoc", "fnValue": "89"},
+                ]
+            )
+        )
 
     def test_summarize_payload_values_counts_nested_values_and_redacts_identifiers(self):
         summary = self.hub_a1.summarize_payload_values(

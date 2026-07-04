@@ -10,7 +10,10 @@ from ..hub_a1 import (
     build_app_device_state_overrides,
     build_hub_a1_product_data,
     describe_hub_a1_lookup_response,
+    has_meaningful_state_values,
     has_hub_a1_telemetry,
+    select_hub_a1_related_app_device,
+    select_preferred_app_device_payload,
     summarize_payload_values,
     summarize_state_values,
 )
@@ -81,30 +84,43 @@ class ProductClient(Bluetti):
         return build_app_device_state_overrides(app_device)
 
     async def _get_app_device_payload(self, device_sn: str) -> dict:
+        direct_device = {}
         try:
             response = await self.get_app_device_by_sn(device_sn)
         except Exception as exc:
             self.logger.warning("BLUETTI app direct lookup summary: error=%s", exc.__class__.__name__)
         else:
             if response.has_data() and isinstance(response.data, dict) and response.data:
+                direct_device = response.data
                 self.logger.warning(
                     "BLUETTI app direct lookup summary: status=%s data=%s lastAlive=%s",
                     describe_hub_a1_lookup_response(response),
                     summarize_payload_values(response.data),
                     summarize_payload_values(response.data.get("lastAlive") if isinstance(response.data.get("lastAlive"), dict) else {}),
                 )
-                return response.data
-            self.logger.warning(
-                "BLUETTI app direct lookup summary: status=%s data=%s",
-                describe_hub_a1_lookup_response(response),
-                summarize_payload_values(response.data),
-            )
+            else:
+                self.logger.warning(
+                    "BLUETTI app direct lookup summary: status=%s data=%s",
+                    describe_hub_a1_lookup_response(response),
+                    summarize_payload_values(response.data),
+                )
 
+        home_devices = await self._get_app_home_devices_payload()
+        selected = select_preferred_app_device_payload(device_sn, direct_device, home_devices)
+        if selected and selected is not direct_device:
+            self.logger.warning(
+                "BLUETTI app selected home-device payload: data=%s lastAlive=%s",
+                summarize_payload_values(selected),
+                summarize_payload_values(selected.get("lastAlive") if isinstance(selected.get("lastAlive"), dict) else {}),
+            )
+        return selected
+
+    async def _get_app_home_devices_payload(self) -> list[dict]:
         try:
             response = await self.get_app_home_devices()
         except Exception as exc:
             self.logger.warning("BLUETTI app home devices summary: error=%s", exc.__class__.__name__)
-            return {}
+            return []
 
         if not response.is_ok() or not isinstance(response.data, list):
             self.logger.warning(
@@ -112,22 +128,14 @@ class ProductClient(Bluetti):
                 describe_hub_a1_lookup_response(response),
                 summarize_payload_values(response.data),
             )
-            return {}
+            return []
 
         self.logger.warning(
             "BLUETTI app home devices summary: status=%s data=%s",
             describe_hub_a1_lookup_response(response),
             summarize_payload_values(response.data),
         )
-        for item in response.data:
-            if isinstance(item, dict) and item.get("sn") == device_sn:
-                self.logger.warning(
-                    "BLUETTI app home device match summary: data=%s lastAlive=%s",
-                    summarize_payload_values(item),
-                    summarize_payload_values(item.get("lastAlive") if isinstance(item.get("lastAlive"), dict) else {}),
-                )
-                return item
-        return {}
+        return response.data
 
     async def get_aecc_realtime_data(self, device_sn: str) -> UnifyResponse[dict]:
         """Get Hub A1 realtime AECC telemetry."""
@@ -233,6 +241,37 @@ class ProductClient(Bluetti):
             load_details=load_details,
             grid_details=grid_details,
         )
+        if not has_meaningful_state_values(product_data["stateList"]):
+            related_app_device = select_hub_a1_related_app_device(
+                await self._get_app_home_devices_payload()
+            )
+            related_last_alive = (
+                related_app_device.get("lastAlive")
+                if isinstance(related_app_device.get("lastAlive"), dict)
+                else {}
+            )
+            if related_app_device and related_last_alive:
+                self.logger.warning(
+                    "Hub A1 related app telemetry fallback summary: data=%s lastAlive=%s",
+                    summarize_payload_values(related_app_device),
+                    summarize_payload_values(related_last_alive),
+                )
+                fallback_app_device = {
+                    "model": "HA1",
+                    "name": app_device.get("name"),
+                    "networkConnect": related_app_device.get("networkConnect"),
+                    "sessionState": related_app_device.get("sessionState"),
+                    "batSOC": related_app_device.get("batSOC"),
+                    "powerAcOut": related_app_device.get("powerAcOut"),
+                    "powerDcOut": related_app_device.get("powerDcOut"),
+                    "powerGridIn": related_app_device.get("powerGridIn"),
+                    "powerPvIn": related_app_device.get("powerPvIn"),
+                }
+                product_data = build_hub_a1_product_data(
+                    device_sn,
+                    app_device=fallback_app_device,
+                    last_alive=related_last_alive,
+                )
         self.logger.warning(
             "Hub A1 built state summary: %s",
             summarize_state_values(product_data["stateList"]),

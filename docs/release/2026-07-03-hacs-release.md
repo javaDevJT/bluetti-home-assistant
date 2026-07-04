@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.5`
+- Latest release tag: `v1.1.6`
 - Integration domain: `bluetti`
-- Integration version: `1.1.5`
+- Integration version: `1.1.6`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -67,3 +67,12 @@ endpoint summaries for app direct lookup, home-device fallback, Hub A1 optional
 telemetry endpoints, and the final synthetic Hub A1 state list so the next live
 run can identify whether BLUETTI is returning zero payloads or the integration
 is selecting the wrong payload branch.
+
+## v1.1.6 Patch
+
+The `v1.1.5` diagnostics showed direct app lookup can return broad device
+records without nested `lastAlive`, while app `homeDevices` can contain the
+richer telemetry needed for Apex-family readings. `v1.1.6` prefers a matching
+`homeDevices` row when it has better telemetry and lets HA1 fall back to an
+Apex-family app telemetry row when Hub-specific endpoints return only online or
+null values.

@@ -13,6 +13,42 @@ SENSOR_TYPE_ENERGY = "SensorDeviceClass.ENERGY"
 SENSOR_TYPE_POWER = "SensorDeviceClass.POWER"
 SENSOR_TYPE_VOLTAGE = "SensorDeviceClass.VOLTAGE"
 
+TELEMETRY_KEYS = {
+    "acswitch",
+    "batsoc",
+    "batterysoc",
+    "batterysoh",
+    "batteryvoltage",
+    "battoloadpower",
+    "chgfulltime",
+    "currentforbms",
+    "dcswitch",
+    "dctotalenergy",
+    "dsgemptytime",
+    "frequency",
+    "gridbatpower",
+    "gridswitch",
+    "gridtoloadpower",
+    "metertotalenergy",
+    "packaveragetemp",
+    "packtotalchgenergy",
+    "packtotaldsgenergy",
+    "power",
+    "poweracout",
+    "powerbatterycharge",
+    "powerdcout",
+    "powerfeedback",
+    "powergridin",
+    "powerinvtotal",
+    "powerloadout",
+    "powerpvin",
+    "pvswitch",
+    "pvtobatpower",
+    "pvtogridpower",
+    "pvtotalenergy",
+    "voltage",
+}
+
 
 class HubA1LookupError(RuntimeError):
     """Raised when a Hub A1 cannot be resolved from app or telemetry APIs."""
@@ -148,6 +184,23 @@ def summarize_state_values(states: list[Any], *, limit: int = 6) -> str:
     return f"states={total} nonzero={nonzero} zero={zero} empty={empty} samples={sample_text}"
 
 
+def has_meaningful_state_values(states: list[Any]) -> bool:
+    """Return true when states contain nonzero values other than online."""
+    for state in states:
+        if isinstance(state, dict):
+            fn_code = state.get("fnCode")
+            value = state.get("fnValue")
+        else:
+            fn_code = getattr(state, "fn_code", None)
+            value = getattr(state, "fn_value", None)
+        if not fn_code or str(fn_code) == "onLine":
+            continue
+        value_text = "" if value is None else str(value)
+        if value_text != "" and not _is_zero_value(value_text):
+            return True
+    return False
+
+
 def summarize_payload_values(payload: Any, *, limit: int = 6) -> str:
     """Return a serial-safe summary of API payload scalar values."""
     row_count = len(payload) if isinstance(payload, list) else None
@@ -186,6 +239,61 @@ def summarize_payload_values(payload: Any, *, limit: int = 6) -> str:
         ]
     )
     return " ".join(parts)
+
+
+def app_device_telemetry_score(app_device: dict[str, Any] | None) -> int:
+    """Return a rough score for useful app-side telemetry in a device payload."""
+    if not isinstance(app_device, dict) or not app_device:
+        return 0
+
+    top_level = {
+        key: value
+        for key, value in app_device.items()
+        if key != "lastAlive"
+    }
+    score = _telemetry_payload_score(top_level)
+    last_alive = app_device.get("lastAlive")
+    if isinstance(last_alive, dict) and not _is_all_field_null(last_alive):
+        score += 3 * _telemetry_payload_score(last_alive)
+    return score
+
+
+def select_preferred_app_device_payload(
+    device_sn: str,
+    direct_device: dict[str, Any] | None,
+    home_devices: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Select the richest app-side payload for a specific device serial."""
+    direct_device = direct_device or {}
+    home_match = {}
+    for item in home_devices or []:
+        if isinstance(item, dict) and item.get("sn") == device_sn:
+            home_match = item
+            break
+
+    if not direct_device:
+        return home_match
+    if not home_match:
+        return direct_device
+
+    if app_device_telemetry_score(home_match) > app_device_telemetry_score(direct_device):
+        return home_match
+    return direct_device
+
+
+def select_hub_a1_related_app_device(home_devices: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """Select an Apex-family app device whose telemetry can represent a Hub A1."""
+    candidates = []
+    for item in home_devices or []:
+        if not isinstance(item, dict):
+            continue
+        telemetry_score = app_device_telemetry_score(item)
+        model_score = _hub_related_model_score(item.get("model"))
+        if telemetry_score > 0 and model_score > 0:
+            candidates.append((model_score, telemetry_score, item))
+    if not candidates:
+        return {}
+    return max(candidates, key=lambda candidate: (candidate[0], candidate[1]))[2]
 
 
 def build_hub_a1_state_list(
@@ -343,6 +451,31 @@ def _first_detail_value(rows: list[dict[str, Any]], key: str) -> Any:
 def _is_zero_value(value: Any) -> bool:
     value_text = str(value).strip().lower()
     return value_text in {"0", "0.0", "false", "off"}
+
+
+def _telemetry_payload_score(payload: Any) -> int:
+    score = 0
+    for key, value in _iter_payload_scalars(payload):
+        value_text = "" if value is None else str(value)
+        if value_text == "" or _is_zero_value(value_text):
+            continue
+        key_name = key.rsplit(".", 1)[-1].lower()
+        if key_name in TELEMETRY_KEYS:
+            score += 1
+    return score
+
+
+def _is_all_field_null(payload: dict[str, Any]) -> bool:
+    return str(payload.get("allFieldIsNull")).strip().lower() == "true"
+
+
+def _hub_related_model_score(model: Any) -> int:
+    model_text = str(model or "").upper()
+    if any(marker in model_text for marker in ("EL100", "APEX", "AP300")):
+        return 100
+    if "HA1" in model_text:
+        return 90
+    return 0
 
 
 def _iter_payload_scalars(payload: Any, prefix: str = ""):
