@@ -17,7 +17,11 @@ from .oauth import AsyncConfigEntryAuth,AuthTokenRefresh
 from .api.bluetti import APPLICATION_PROFILE
 from .api.product_client import ProductClient
 from .api.websocket import StompClient
-from .hub_a1 import HubA1LookupError, parse_hub_a1_serials
+from .hub_a1 import (
+    HubA1LookupError,
+    apply_app_device_state_overrides,
+    parse_hub_a1_serials,
+)
 from .profile.application_profile import ApplicationProfile
 from .const import CONF_HUB_A1_SERIALS, DOMAIN
 from .model.product import UserProduct
@@ -45,6 +49,31 @@ def _serialize_products(products):
         else:
             serialized.append(product)
     return serialized
+
+
+async def _refresh_selected_products(product_client: ProductClient, products: list[UserProduct]) -> list[UserProduct]:
+    refreshed_products: list[UserProduct] = []
+    for product in products:
+        try:
+            if product.model == "HA1":
+                refreshed_products.append(await product_client.get_hub_a1_product(product.sn))
+                continue
+
+            app_states = await product_client.get_app_device_state_overrides(product.sn)
+            if app_states:
+                product_data = apply_app_device_state_overrides(product.model_dump(), app_states)
+                refreshed_products.append(UserProduct.model_validate(product_data))
+                continue
+        except HubA1LookupError as exc:
+            __LOGGER__.warning("Unable to refresh selected Hub A1 device before setup: %s", exc)
+        except Exception as exc:
+            __LOGGER__.warning(
+                "Unable to refresh selected BLUETTI device before setup: %s",
+                exc.__class__.__name__,
+            )
+
+        refreshed_products.append(product)
+    return refreshed_products
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> bool:
@@ -110,7 +139,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
             data={**entry.data, "products": _serialize_products(all_products)},
         )
 
-    selected_products = [p for p in all_products if p.sn in enabled_devices]
+    selected_products = await _refresh_selected_products(
+        product_client,
+        [p for p in all_products if p.sn in enabled_devices],
+    )
 
     bluetti_devices = BluettiData(hass, selected_products)
 

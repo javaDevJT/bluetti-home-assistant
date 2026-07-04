@@ -140,6 +140,65 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["SetCtrlAc"]["fnValue"], "1")
         self.assertEqual(states_by_code["SetCtrlDc"]["fnValue"], "0")
 
+    def test_build_app_device_state_overrides_returns_empty_without_app_payload(self):
+        self.assertEqual(self.hub_a1.build_app_device_state_overrides({}), [])
+        self.assertEqual(self.hub_a1.build_app_device_state_overrides(None), [])
+
+    def test_apply_state_overrides_updates_cached_zero_product_before_entity_setup(self):
+        product = {
+            "sn": TEST_APEX_SERIAL,
+            "model": "EL100V2",
+            "name": "Apex",
+            "online": "0",
+            "stateList": [
+                {
+                    "fnCode": "SOC",
+                    "fnName": "Battery Level",
+                    "fnValue": "0",
+                    "fnType": "SENSOR",
+                    "sensorInfo": {"sensorType": "SensorDeviceClass.BATTERY", "unit": "%"},
+                    "supportModeValues": [],
+                },
+                {
+                    "fnCode": "ACLoadAllTotalPower",
+                    "fnName": "Alternating Current Out Power",
+                    "fnValue": "0",
+                    "fnType": "SENSOR",
+                    "sensorInfo": {"sensorType": "SensorDeviceClass.POWER", "unit": None},
+                    "supportModeValues": [],
+                },
+                {
+                    "fnCode": "SetCtrlWorkMode",
+                    "fnName": "Working mode",
+                    "fnValue": "workmode_3",
+                    "fnType": "SELECT",
+                    "sensorInfo": {},
+                    "supportModeValues": [{"code": "workmode_3", "name": "Self-use"}],
+                },
+            ],
+        }
+        app_states = self.hub_a1.build_app_device_state_overrides(
+            {
+                "model": "EL100V2",
+                "networkConnect": 1,
+                "lastAlive": {
+                    "batterySoc": "89",
+                    "powerAcOut": "128",
+                    "acSwitch": "1",
+                },
+            }
+        )
+
+        updated = self.hub_a1.apply_app_device_state_overrides(product, app_states)
+
+        self.assertEqual(updated["online"], "1")
+        states_by_code = {state["fnCode"]: state for state in updated["stateList"]}
+        self.assertEqual(states_by_code["SOC"]["fnValue"], "89")
+        self.assertEqual(states_by_code["SOC"]["sensorInfo"]["unit"], "%")
+        self.assertEqual(states_by_code["ACLoadAllTotalPower"]["fnValue"], "128")
+        self.assertEqual(states_by_code["SetCtrlWorkMode"]["supportModeValues"][0]["name"], "Self-use")
+        self.assertEqual(states_by_code["SetCtrlAc"]["fnType"], "SWITCH")
+
     def test_build_hub_a1_product_data_falls_back_to_serial_name(self):
         product = self.hub_a1.build_hub_a1_product_data(
             TEST_HUB_SERIAL,

@@ -161,6 +161,8 @@ def build_hub_a1_state_list(
 def build_app_device_state_overrides(app_device: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Build updates for app-side devices whose HA endpoint returns stale zeros."""
     app_device = app_device or {}
+    if not app_device:
+        return []
     last_alive = app_device.get("lastAlive") if isinstance(app_device.get("lastAlive"), dict) else {}
 
     states = [
@@ -182,6 +184,51 @@ def build_app_device_state_overrides(app_device: dict[str, Any] | None) -> list[
     ]
 
     return [state for state in states if state is not None]
+
+
+def apply_app_device_state_overrides(
+    product_data: dict[str, Any],
+    app_states: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Apply app-side state updates to a cached UserProduct-shaped dict."""
+    updated_product = dict(product_data)
+    state_list = [
+        dict(state)
+        for state in (updated_product.get("stateList") or [])
+        if isinstance(state, dict)
+    ]
+    states_by_code = {
+        state.get("fnCode"): state
+        for state in state_list
+        if state.get("fnCode")
+    }
+
+    for app_state in app_states:
+        fn_code = app_state.get("fnCode")
+        if not fn_code:
+            continue
+        if fn_code == "onLine":
+            updated_product["online"] = app_state.get("fnValue")
+            continue
+        existing_state = states_by_code.get(fn_code)
+        if existing_state is None:
+            new_state = dict(app_state)
+            state_list.append(new_state)
+            states_by_code[fn_code] = new_state
+            continue
+
+        existing_state["fnValue"] = app_state.get("fnValue")
+        if not existing_state.get("fnName") and app_state.get("fnName"):
+            existing_state["fnName"] = app_state["fnName"]
+        if not existing_state.get("fnType") and app_state.get("fnType"):
+            existing_state["fnType"] = app_state["fnType"]
+        if not existing_state.get("sensorInfo") and app_state.get("sensorInfo"):
+            existing_state["sensorInfo"] = app_state["sensorInfo"]
+        if not existing_state.get("supportModeValues") and app_state.get("supportModeValues"):
+            existing_state["supportModeValues"] = app_state["supportModeValues"]
+
+    updated_product["stateList"] = state_list
+    return updated_product
 
 
 def _append_detail_states(
