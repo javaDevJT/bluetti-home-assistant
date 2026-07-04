@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.6`
+- Latest release tag: `v1.1.7`
 - Integration domain: `bluetti`
-- Integration version: `1.1.6`
+- Integration version: `1.1.7`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -76,3 +76,10 @@ richer telemetry needed for Apex-family readings. `v1.1.6` prefers a matching
 `homeDevices` row when it has better telemetry and lets HA1 fall back to an
 Apex-family app telemetry row when Hub-specific endpoints return only online or
 null values.
+
+## v1.1.7 Patch
+
+The `v1.1.6` fallback could populate HA1 values but leave them static because
+runtime updates still depended on websocket events. `v1.1.7` registers a
+60-second Home Assistant interval refresh for selected devices and cancels it
+on unload/remove, so HA1/Apex fallback telemetry is re-read after startup.

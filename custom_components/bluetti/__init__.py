@@ -2,12 +2,14 @@
 # from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_entry_oauth2_flow, device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers import storage
 
 from .models import BluettiData
@@ -175,9 +177,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
 
         # device._ws_manager = stomp_client
 
+    async def _async_periodic_refresh(now):
+        for device in bluetti_devices.devices:
+            try:
+                await device.async_update()
+            except Exception as exc:
+                __LOGGER__.warning(
+                    "BLUETTI periodic device refresh failed: model=%s error=%s",
+                    device.model,
+                    exc.__class__.__name__,
+                )
+
+    refresh_unsub = async_track_time_interval(
+        hass,
+        _async_periodic_refresh,
+        timedelta(seconds=60),
+    )
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
         "bluettiDevices": bluetti_devices,
         "stompClient": stomp_client,
+        "refresh_unsub": refresh_unsub,
     }
 
     for device in bluetti_devices.devices:
@@ -215,17 +235,26 @@ def web_socket_message_handler(message: str):
 # TODO Update entry annotation
 async def async_unload_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> bool:
     """Unload a config entry."""
+    data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if data:
+        refresh_unsub = data.get("refresh_unsub")
+        if refresh_unsub:
+            refresh_unsub()
     return await hass.config_entries.async_unload_platforms(entry, _PLATFORMS)
 
 async def async_remove_entry(hass, entry):
     """Handle removal of an entry."""
     data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    if data and "stompClient" in data:
-        stomp_client = data["stompClient"]
-        try:
-            stomp_client.disconnect()
-        except Exception as e:
-            __LOGGER__.warning("Error while disconnecting websocket: %s", e)
+    if data:
+        refresh_unsub = data.get("refresh_unsub")
+        if refresh_unsub:
+            refresh_unsub()
+        if "stompClient" in data:
+            stomp_client = data["stompClient"]
+            try:
+                stomp_client.disconnect()
+            except Exception as e:
+                __LOGGER__.warning("Error while disconnecting websocket: %s", e)
 
     device_registry = dr.async_get(hass)
     for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
