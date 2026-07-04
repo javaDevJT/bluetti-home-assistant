@@ -11,6 +11,8 @@ from ..hub_a1 import (
     build_hub_a1_product_data,
     describe_hub_a1_lookup_response,
     has_hub_a1_telemetry,
+    summarize_payload_values,
+    summarize_state_values,
 )
 from ..model.product import UserProduct
 
@@ -82,22 +84,48 @@ class ProductClient(Bluetti):
         try:
             response = await self.get_app_device_by_sn(device_sn)
         except Exception as exc:
-            self.logger.debug("App-side device lookup failed: %s", exc.__class__.__name__)
+            self.logger.warning("BLUETTI app direct lookup summary: error=%s", exc.__class__.__name__)
         else:
             if response.has_data() and isinstance(response.data, dict) and response.data:
+                self.logger.warning(
+                    "BLUETTI app direct lookup summary: status=%s data=%s lastAlive=%s",
+                    describe_hub_a1_lookup_response(response),
+                    summarize_payload_values(response.data),
+                    summarize_payload_values(response.data.get("lastAlive") if isinstance(response.data.get("lastAlive"), dict) else {}),
+                )
                 return response.data
+            self.logger.warning(
+                "BLUETTI app direct lookup summary: status=%s data=%s",
+                describe_hub_a1_lookup_response(response),
+                summarize_payload_values(response.data),
+            )
 
         try:
             response = await self.get_app_home_devices()
         except Exception as exc:
-            self.logger.debug("App-side home devices lookup failed: %s", exc.__class__.__name__)
+            self.logger.warning("BLUETTI app home devices summary: error=%s", exc.__class__.__name__)
             return {}
 
         if not response.is_ok() or not isinstance(response.data, list):
+            self.logger.warning(
+                "BLUETTI app home devices summary: status=%s data=%s",
+                describe_hub_a1_lookup_response(response),
+                summarize_payload_values(response.data),
+            )
             return {}
 
+        self.logger.warning(
+            "BLUETTI app home devices summary: status=%s data=%s",
+            describe_hub_a1_lookup_response(response),
+            summarize_payload_values(response.data),
+        )
         for item in response.data:
             if isinstance(item, dict) and item.get("sn") == device_sn:
+                self.logger.warning(
+                    "BLUETTI app home device match summary: data=%s lastAlive=%s",
+                    summarize_payload_values(item),
+                    summarize_payload_values(item.get("lastAlive") if isinstance(item.get("lastAlive"), dict) else {}),
+                )
                 return item
         return {}
 
@@ -169,12 +197,19 @@ class ProductClient(Bluetti):
             if app_device_response.has_data() and isinstance(app_device_response.data, dict) and app_device_response.data:
                 app_device = app_device_response.data
 
-        realtime = await self._optional_response_data(self.get_aecc_realtime_data, device_sn, {})
-        last_alive = await self._optional_response_data(self.get_device_last_alive, device_sn, {})
-        battery_details = await self._optional_response_data(self.get_aecc_battery_detail_data, device_sn, [])
-        pv_details = await self._optional_response_data(self.get_aecc_pv_detail_data, device_sn, [])
-        load_details = await self._optional_response_data(self.get_aecc_load_detail_data, device_sn, [])
-        grid_details = await self._optional_response_data(self.get_aecc_grid_detail_data, device_sn, [])
+        self.logger.warning(
+            "Hub A1 app lookup summary: status=%s data=%s lastAlive=%s",
+            app_lookup_status,
+            summarize_payload_values(app_device),
+            summarize_payload_values(app_device.get("lastAlive") if isinstance(app_device.get("lastAlive"), dict) else {}),
+        )
+
+        realtime = await self._optional_response_data("realtime", self.get_aecc_realtime_data, device_sn, {})
+        last_alive = await self._optional_response_data("lastAlive", self.get_device_last_alive, device_sn, {})
+        battery_details = await self._optional_response_data("batteryDetails", self.get_aecc_battery_detail_data, device_sn, [])
+        pv_details = await self._optional_response_data("pvDetails", self.get_aecc_pv_detail_data, device_sn, [])
+        load_details = await self._optional_response_data("loadDetails", self.get_aecc_load_detail_data, device_sn, [])
+        grid_details = await self._optional_response_data("gridDetails", self.get_aecc_grid_detail_data, device_sn, [])
 
         if not app_device and not has_hub_a1_telemetry(
             realtime=realtime,
@@ -198,18 +233,38 @@ class ProductClient(Bluetti):
             load_details=load_details,
             grid_details=grid_details,
         )
+        self.logger.warning(
+            "Hub A1 built state summary: %s",
+            summarize_state_values(product_data["stateList"]),
+        )
         return UserProduct.model_validate(product_data)
 
-    async def _optional_response_data(self, request, device_sn: str, default):
+    async def _optional_response_data(self, label: str, request, device_sn: str, default):
         try:
             response = await request(device_sn)
         except Exception as exc:
-            self.logger.warning("Optional Hub A1 telemetry request failed: %s", exc.__class__.__name__)
+            self.logger.warning(
+                "Hub A1 optional telemetry summary: endpoint=%s error=%s",
+                label,
+                exc.__class__.__name__,
+            )
             return default
         if not response.is_ok():
-            self.logger.warning("Optional Hub A1 telemetry request returned msgCode=%s", response.msgCode)
+            self.logger.warning(
+                "Hub A1 optional telemetry summary: endpoint=%s status=%s data=%s",
+                label,
+                describe_hub_a1_lookup_response(response),
+                summarize_payload_values(response.data),
+            )
             return default
-        return response.data if response.data is not None else default
+        data = response.data if response.data is not None else default
+        self.logger.warning(
+            "Hub A1 optional telemetry summary: endpoint=%s status=%s data=%s",
+            label,
+            describe_hub_a1_lookup_response(response),
+            summarize_payload_values(data),
+        )
+        return data
 
     async def control_device(self, payload: str = None):
         """

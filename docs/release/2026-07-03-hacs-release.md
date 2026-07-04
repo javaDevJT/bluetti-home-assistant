@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.4`
+- Latest release tag: `v1.1.5`
 - Integration domain: `bluetti`
-- Integration version: `1.1.4`
+- Integration version: `1.1.5`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -58,3 +58,12 @@ awaits one initial device refresh before entity setup, persists refreshed
 selected product snapshots, and logs serial-safe value summaries at startup to
 show whether product/runtime state is zero or nonzero before entities are
 created.
+
+## v1.1.5 Patch
+
+The `v1.1.4` startup summaries showed Hub A1 and Apex-family values were already
+zero-heavy before Home Assistant entity creation. `v1.1.5` adds serial-safe
+endpoint summaries for app direct lookup, home-device fallback, Hub A1 optional
+telemetry endpoints, and the final synthetic Hub A1 state list so the next live
+run can identify whether BLUETTI is returning zero payloads or the integration
+is selecting the wrong payload branch.

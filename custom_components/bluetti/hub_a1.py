@@ -148,6 +148,46 @@ def summarize_state_values(states: list[Any], *, limit: int = 6) -> str:
     return f"states={total} nonzero={nonzero} zero={zero} empty={empty} samples={sample_text}"
 
 
+def summarize_payload_values(payload: Any, *, limit: int = 6) -> str:
+    """Return a serial-safe summary of API payload scalar values."""
+    row_count = len(payload) if isinstance(payload, list) else None
+    field_count = 0
+    zero = 0
+    nonzero = 0
+    empty = 0
+    samples: list[str] = []
+
+    for key, value in _iter_payload_scalars(payload):
+        field_count += 1
+        value_text = "" if value is None else str(value)
+        if value_text == "":
+            empty += 1
+            continue
+        if _is_zero_value(value_text):
+            zero += 1
+            continue
+
+        nonzero += 1
+        if len(samples) < limit and not _is_identifier_key(key):
+            safe_key = _redact_identifier_text(key)
+            safe_value = _redact_identifier_text(value_text)
+            samples.append(f"{safe_key}={safe_value}")
+
+    parts = []
+    if row_count is not None:
+        parts.append(f"rows={row_count}")
+    parts.extend(
+        [
+            f"fields={field_count}",
+            f"nonzero={nonzero}",
+            f"zero={zero}",
+            f"empty={empty}",
+            f"samples={','.join(samples) if samples else 'none'}",
+        ]
+    )
+    return " ".join(parts)
+
+
 def build_hub_a1_state_list(
     *,
     app_device: dict[str, Any] | None = None,
@@ -303,6 +343,45 @@ def _first_detail_value(rows: list[dict[str, Any]], key: str) -> Any:
 def _is_zero_value(value: Any) -> bool:
     value_text = str(value).strip().lower()
     return value_text in {"0", "0.0", "false", "off"}
+
+
+def _iter_payload_scalars(payload: Any, prefix: str = ""):
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            key_text = str(key)
+            nested_key = f"{prefix}.{key_text}" if prefix else key_text
+            yield from _iter_payload_scalars(value, nested_key)
+        return
+    if isinstance(payload, list):
+        for index, item in enumerate(payload, start=1):
+            item_prefix = _payload_row_prefix(item, index, prefix)
+            yield from _iter_payload_scalars(item, item_prefix)
+        return
+    if prefix:
+        yield prefix, payload
+
+
+def _payload_row_prefix(item: Any, index: int, prefix: str) -> str:
+    label = None
+    if isinstance(item, dict):
+        for key in ("portName", "name", "moduleName"):
+            value = item.get(key)
+            if value:
+                label = _redact_identifier_text(str(value))
+                break
+    row_name = label or f"row{index}"
+    return f"{prefix}.{row_name}" if prefix else row_name
+
+
+def _is_identifier_key(key: str) -> bool:
+    key_parts = {part.lower() for part in re.split(r"[^A-Za-z0-9]+", key) if part}
+    if key_parts & {"sn", "id", "mac", "uuid"}:
+        return True
+    return any(
+        marker in part
+        for part in key_parts
+        for marker in ("serial", "devicesn", "deviceid")
+    )
 
 
 def _online_value(app_device: dict[str, Any], last_alive: dict[str, Any]) -> str:

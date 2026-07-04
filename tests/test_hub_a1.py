@@ -218,6 +218,50 @@ class HubA1Tests(unittest.TestCase):
         self.assertNotIn(TEST_HUB_SERIAL, summary)
         self.assertNotIn(TEST_APEX_SERIAL, summary)
 
+    def test_summarize_payload_values_counts_nested_values_and_redacts_identifiers(self):
+        summary = self.hub_a1.summarize_payload_values(
+            {
+                "sn": TEST_HUB_SERIAL,
+                "model": "HA1",
+                "batSOC": "0",
+                "powerAcOut": 2536,
+                "powerGridIn": "2452",
+                "powerPvIn": 0,
+                "emptyField": "",
+                "lastAlive": {
+                    "batterySoc": "9",
+                    "powerAcOut": "2536",
+                    "serialEcho": TEST_APEX_SERIAL,
+                },
+            },
+            limit=10,
+        )
+
+        self.assertIn("fields=", summary)
+        self.assertIn("nonzero=", summary)
+        self.assertIn("zero=2", summary)
+        self.assertIn("empty=1", summary)
+        self.assertIn("powerAcOut=2536", summary)
+        self.assertIn("lastAlive.batterySoc=9", summary)
+        self.assertNotIn("serialEcho", summary)
+        self.assertNotIn(TEST_HUB_SERIAL, summary)
+        self.assertNotIn(TEST_APEX_SERIAL, summary)
+
+    def test_summarize_payload_values_handles_detail_rows_without_dumping_payloads(self):
+        summary = self.hub_a1.summarize_payload_values(
+            [
+                {"portName": "PV1", "power": "0", "voltage": "0"},
+                {"portName": "PV2", "power": "76", "voltage": "42.1"},
+            ],
+            limit=3,
+        )
+
+        self.assertIn("rows=2", summary)
+        self.assertIn("fields=6", summary)
+        self.assertIn("zero=2", summary)
+        self.assertIn("PV2.power=76", summary)
+        self.assertNotIn("raw", summary.lower())
+
     def test_build_hub_a1_product_data_falls_back_to_serial_name(self):
         product = self.hub_a1.build_hub_a1_product_data(
             TEST_HUB_SERIAL,
