@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.3`
+- Latest release tag: `v1.1.4`
 - Integration domain: `bluetti`
-- Integration version: `1.1.3`
+- Integration version: `1.1.4`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -49,3 +49,12 @@ The `v1.1.2` overlay still ran after Home Assistant entities could be created
 from cached zero-valued config-entry product data. `v1.1.3` refreshes selected
 Hub A1 and Apex-family products from read-only app telemetry before entity setup
 so startup state no longer depends on a later background refresh.
+
+## v1.1.4 Patch
+
+The `v1.1.3` change still allowed Home Assistant entities to be forwarded
+before each runtime `BluettiDevice` completed a read-only update. `v1.1.4`
+awaits one initial device refresh before entity setup, persists refreshed
+selected product snapshots, and logs serial-safe value summaries at startup to
+show whether product/runtime state is zero or nonzero before entities are
+created.

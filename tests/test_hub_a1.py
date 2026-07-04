@@ -199,6 +199,25 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["SetCtrlWorkMode"]["supportModeValues"][0]["name"], "Self-use")
         self.assertEqual(states_by_code["SetCtrlAc"]["fnType"], "SWITCH")
 
+    def test_summarize_state_values_omits_serials_and_counts_nonzero_values(self):
+        summary = self.hub_a1.summarize_state_values(
+            [
+                {"fnCode": "SOC", "fnValue": "89"},
+                {"fnCode": "ACLoadAllTotalPower", "fnValue": "128"},
+                {"fnCode": "PVAllTotalPower", "fnValue": "0"},
+                {"fnCode": TEST_HUB_SERIAL, "fnValue": TEST_APEX_SERIAL},
+            ],
+            limit=3,
+        )
+
+        self.assertIn("states=4", summary)
+        self.assertIn("nonzero=3", summary)
+        self.assertIn("zero=1", summary)
+        self.assertIn("SOC=89", summary)
+        self.assertIn("ACLoadAllTotalPower=128", summary)
+        self.assertNotIn(TEST_HUB_SERIAL, summary)
+        self.assertNotIn(TEST_APEX_SERIAL, summary)
+
     def test_build_hub_a1_product_data_falls_back_to_serial_name(self):
         product = self.hub_a1.build_hub_a1_product_data(
             TEST_HUB_SERIAL,

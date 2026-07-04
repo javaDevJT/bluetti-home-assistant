@@ -110,6 +110,44 @@ def describe_hub_a1_lookup_response(response: Any) -> str:
     return ", ".join(parts) if parts else type(response).__name__
 
 
+def summarize_state_values(states: list[Any], *, limit: int = 6) -> str:
+    """Return a serial-safe summary of state values for diagnostics."""
+    total = 0
+    zero = 0
+    nonzero = 0
+    empty = 0
+    samples: list[str] = []
+
+    for state in states:
+        if isinstance(state, dict):
+            fn_code = state.get("fnCode")
+            value = state.get("fnValue")
+        else:
+            fn_code = getattr(state, "fn_code", None)
+            value = getattr(state, "fn_value", None)
+
+        if not fn_code:
+            continue
+
+        total += 1
+        value_text = "" if value is None else str(value)
+        if value_text == "":
+            empty += 1
+            continue
+        if _is_zero_value(value_text):
+            zero += 1
+            continue
+
+        nonzero += 1
+        if len(samples) < limit:
+            safe_code = _redact_identifier_text(str(fn_code))
+            safe_value = _redact_identifier_text(value_text)
+            samples.append(f"{safe_code}={safe_value}")
+
+    sample_text = ",".join(samples) if samples else "none"
+    return f"states={total} nonzero={nonzero} zero={zero} empty={empty} samples={sample_text}"
+
+
 def build_hub_a1_state_list(
     *,
     app_device: dict[str, Any] | None = None,
@@ -260,6 +298,11 @@ def _first_detail_value(rows: list[dict[str, Any]], key: str) -> Any:
         if value is not None and value != "":
             return value
     return None
+
+
+def _is_zero_value(value: Any) -> bool:
+    value_text = str(value).strip().lower()
+    return value_text in {"0", "0.0", "false", "off"}
 
 
 def _online_value(app_device: dict[str, Any], last_alive: dict[str, Any]) -> str:

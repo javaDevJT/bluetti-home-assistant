@@ -2,7 +2,6 @@
 # from __future__ import annotations
 
 import logging
-import asyncio
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -10,7 +9,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_entry_oauth2_flow, device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import storage
-from homeassistant.const import EVENT_HOMEASSISTANT_START
 
 from .models import BluettiData
 from .oauth import AsyncConfigEntryAuth,AuthTokenRefresh
@@ -21,6 +19,7 @@ from .hub_a1 import (
     HubA1LookupError,
     apply_app_device_state_overrides,
     parse_hub_a1_serials,
+    summarize_state_values,
 )
 from .profile.application_profile import ApplicationProfile
 from .const import CONF_HUB_A1_SERIALS, DOMAIN
@@ -74,6 +73,11 @@ async def _refresh_selected_products(product_client: ProductClient, products: li
 
         refreshed_products.append(product)
     return refreshed_products
+
+
+def _replace_products_by_sn(products: list[UserProduct], replacements: list[UserProduct]) -> list[UserProduct]:
+    replacements_by_sn = {product.sn: product for product in replacements}
+    return [replacements_by_sn.get(product.sn, product) for product in products]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> bool:
@@ -143,6 +147,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
         product_client,
         [p for p in all_products if p.sn in enabled_devices],
     )
+    all_products = _replace_products_by_sn(all_products, selected_products)
+    if selected_products:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, "products": _serialize_products(all_products)},
+        )
+    for product in selected_products:
+        __LOGGER__.warning(
+            "BLUETTI setup product summary before entity setup: model=%s %s",
+            product.model,
+            summarize_state_values(product.stateList or []),
+        )
 
     bluetti_devices = BluettiData(hass, selected_products)
 
@@ -164,10 +180,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
         "stompClient": stomp_client,
     }
 
-    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
-
     for device in bluetti_devices.devices:
-        asyncio.run_coroutine_threadsafe(device.async_update(), hass.loop)
+        try:
+            await device.async_update()
+        except Exception as exc:
+            __LOGGER__.warning(
+                "BLUETTI setup initial device refresh failed before entity setup: model=%s error=%s",
+                device.model,
+                exc.__class__.__name__,
+            )
+        __LOGGER__.warning(
+            "BLUETTI setup runtime state summary before entity setup: model=%s %s",
+            device.model,
+            summarize_state_values(device.states),
+        )
+
+    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
     # async def _after_start(event):
     #     # print(event)
