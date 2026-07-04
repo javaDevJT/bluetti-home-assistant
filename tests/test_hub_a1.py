@@ -79,6 +79,67 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["HubA1AcSwitch"]["fnType"], "SENSOR")
         self.assertEqual(states_by_code["onLine"]["fnValue"], "1")
 
+    def test_build_hub_a1_product_data_prefers_realtime_over_top_level_zero_placeholders(self):
+        product = self.hub_a1.build_hub_a1_product_data(
+            TEST_HUB_SERIAL,
+            app_device={
+                "sn": TEST_HUB_SERIAL,
+                "name": "Garage Hub",
+                "model": "HA1",
+                "sessionState": "Online",
+                "batSOC": "0",
+                "powerAcOut": 0,
+                "powerGridIn": 0,
+                "powerPvIn": 0,
+            },
+            realtime={
+                "batterySoc": "89",
+                "powerLoadOut": "128",
+                "powerGridIn": "12",
+                "powerPvIn": "76",
+            },
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertEqual(states_by_code["HubA1BatterySoc"]["fnValue"], "89")
+        self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "128")
+        self.assertEqual(states_by_code["HubA1GridPowerIn"]["fnValue"], "12")
+        self.assertEqual(states_by_code["HubA1PvPowerIn"]["fnValue"], "76")
+
+    def test_build_app_device_state_overrides_prefers_last_alive_for_apex_zero_fields(self):
+        states = self.hub_a1.build_app_device_state_overrides(
+            {
+                "model": "EL100V2",
+                "sessionState": "Offline",
+                "networkConnect": 1,
+                "batSOC": "0",
+                "powerAcOut": 0,
+                "powerDcOut": 0,
+                "powerGridIn": 0,
+                "powerPvIn": 0,
+                "lastAlive": {
+                    "batterySoc": "89",
+                    "powerAcOut": "128",
+                    "powerDcOut": "0",
+                    "powerGridIn": "0",
+                    "powerPvIn": "76",
+                    "chgFullTime": "5994",
+                    "acSwitch": "1",
+                    "dcSwitch": "0",
+                },
+            }
+        )
+
+        states_by_code = {state["fnCode"]: state for state in states}
+        self.assertEqual(states_by_code["onLine"]["fnValue"], "1")
+        self.assertEqual(states_by_code["SOC"]["fnValue"], "89")
+        self.assertEqual(states_by_code["ACLoadAllTotalPower"]["fnValue"], "128")
+        self.assertEqual(states_by_code["DCLoadAllTotalPower"]["fnValue"], "0")
+        self.assertEqual(states_by_code["PVAllTotalPower"]["fnValue"], "76")
+        self.assertEqual(states_by_code["ChgFullTime"]["fnValue"], "5994")
+        self.assertEqual(states_by_code["SetCtrlAc"]["fnValue"], "1")
+        self.assertEqual(states_by_code["SetCtrlDc"]["fnValue"], "0")
+
     def test_build_hub_a1_product_data_falls_back_to_serial_name(self):
         product = self.hub_a1.build_hub_a1_product_data(
             TEST_HUB_SERIAL,

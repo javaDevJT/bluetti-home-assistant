@@ -138,10 +138,10 @@ def build_hub_a1_state_list(
             "Battery Voltage",
             _first(last_alive.get("batteryVoltage"), _first_detail_value(battery_details, "voltage")),
         ),
-        _power_sensor("HubA1AcPowerOut", "AC Output Power", _first(app_device.get("powerAcOut"), realtime.get("powerLoadOut"))),
-        _power_sensor("HubA1DcPowerOut", "DC Output Power", app_device.get("powerDcOut")),
-        _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first(app_device.get("powerGridIn"), realtime.get("powerGridIn"))),
-        _power_sensor("HubA1PvPowerIn", "PV Input Power", _first(app_device.get("powerPvIn"), realtime.get("powerPvIn"))),
+        _power_sensor("HubA1AcPowerOut", "AC Output Power", _first(realtime.get("powerLoadOut"), last_alive.get("powerAcOut"), app_device.get("powerAcOut"))),
+        _power_sensor("HubA1DcPowerOut", "DC Output Power", _first(last_alive.get("powerDcOut"), app_device.get("powerDcOut"))),
+        _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first(realtime.get("powerGridIn"), last_alive.get("powerGridIn"), app_device.get("powerGridIn"))),
+        _power_sensor("HubA1PvPowerIn", "PV Input Power", _first(realtime.get("powerPvIn"), last_alive.get("powerPvIn"), app_device.get("powerPvIn"))),
         _power_sensor("HubA1BatteryChargePower", "Battery Charge Power", realtime.get("powerBatteryCharge")),
         _energy_sensor("HubA1MeterTotalEnergy", "Meter Total Energy", realtime.get("meterTotalEnergy")),
         _energy_sensor("HubA1DcTotalEnergy", "DC Total Energy", last_alive.get("dcTotalEnergy")),
@@ -154,6 +154,32 @@ def build_hub_a1_state_list(
     _append_detail_states(states, "HubA1Pv", "PV", pv_details)
     _append_detail_states(states, "HubA1Load", "Load", load_details)
     _append_detail_states(states, "HubA1Grid", "Grid", grid_details)
+
+    return [state for state in states if state is not None]
+
+
+def build_app_device_state_overrides(app_device: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Build updates for app-side devices whose HA endpoint returns stale zeros."""
+    app_device = app_device or {}
+    last_alive = app_device.get("lastAlive") if isinstance(app_device.get("lastAlive"), dict) else {}
+
+    states = [
+        _binary_sensor("onLine", "Online", _online_value(app_device, last_alive)),
+        _battery_sensor("SOC", "Battery Level", _first(last_alive.get("batterySoc"), app_device.get("batSOC"))),
+        _battery_sensor("BatterySoh", "Battery SOH", last_alive.get("batterySoh")),
+        _voltage_sensor("BatteryVoltage", "Battery Voltage", last_alive.get("batteryVoltage")),
+        _power_sensor("ACLoadAllTotalPower", "Alternating Current Out Power", _first(last_alive.get("powerAcOut"), app_device.get("powerAcOut"))),
+        _power_sensor("DCLoadAllTotalPower", "Direct Current Out Power", _first(last_alive.get("powerDcOut"), app_device.get("powerDcOut"))),
+        _power_sensor("GridAllTotalPower", "Grid Input Power", _first(last_alive.get("powerGridIn"), app_device.get("powerGridIn"))),
+        _power_sensor("PVAllTotalPower", "Photovoltaics Input Power", _first(last_alive.get("powerPvIn"), app_device.get("powerPvIn"))),
+        _duration_sensor("ChgFullTime", "Full Charge Time In Minutes", last_alive.get("chgFullTime")),
+        _duration_sensor("DsgFullTime", "Battery Time In Minutes", last_alive.get("dsgEmptyTime")),
+        _energy_sensor("PackTotalChargeEnergy", "Pack Total Charge Energy", last_alive.get("packTotalChgEnergy")),
+        _energy_sensor("PackTotalDischargeEnergy", "Pack Total Discharge Energy", last_alive.get("packTotalDsgEnergy")),
+        _energy_sensor("PvTotalEnergy", "PV Total Energy", last_alive.get("pvTotalEnergy")),
+        _switch_state("SetCtrlAc", "AC", last_alive.get("acSwitch")),
+        _switch_state("SetCtrlDc", "DC", last_alive.get("dcSwitch")),
+    ]
 
     return [state for state in states if state is not None]
 
@@ -193,11 +219,11 @@ def _online_value(app_device: dict[str, Any], last_alive: dict[str, Any]) -> str
     session_state = str(app_device.get("sessionState") or "").lower()
     if session_state == "online":
         return "1"
-    if session_state == "offline":
-        return "0"
     network_connect = app_device.get("networkConnect")
     if str(network_connect) == "1":
         return "1"
+    if session_state == "offline":
+        return "0"
     if str(network_connect) == "0":
         return "0"
     return "1" if last_alive else "0"
@@ -215,6 +241,10 @@ def _binary_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | N
 
 def _battery_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | None:
     return _sensor(fn_code, fn_name, value, SENSOR_TYPE_BATTERY, "%")
+
+
+def _duration_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | None:
+    return _sensor(fn_code, fn_name, value, "SensorDeviceClass.DURATION", "min")
 
 
 def _energy_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | None:
@@ -235,6 +265,12 @@ def _plain_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | No
     return _state(fn_code, fn_name, value)
 
 
+def _switch_state(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | None:
+    if value is None or value == "":
+        return None
+    return _state(fn_code, fn_name, "1" if str(value).lower() in {"1", "true", "online"} else "0", fn_type="SWITCH")
+
+
 def _sensor(fn_code: str, fn_name: str, value: Any, sensor_type: str, unit: str) -> dict[str, Any] | None:
     if value is None or value == "":
         return None
@@ -246,12 +282,13 @@ def _state(
     fn_name: str,
     value: Any,
     sensor_info: dict[str, str] | None = None,
+    fn_type: str = "SENSOR",
 ) -> dict[str, Any]:
     return {
         "fnCode": fn_code,
         "fnName": fn_name,
         "fnValue": str(value),
-        "fnType": "SENSOR",
+        "fnType": fn_type,
         "sensorInfo": sensor_info or {},
         "supportModeValues": [],
     }

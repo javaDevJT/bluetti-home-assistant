@@ -6,6 +6,8 @@ leaving them only in chat or tool output.
 
 ## Structure
 
+- `discovery/` - capture findings, endpoint behavior, and implementation
+  implications derived from local BLUETTI API observations.
 - `release/` - release and distribution notes such as HACS packaging
   requirements and publication checklists.
 

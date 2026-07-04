@@ -7,6 +7,7 @@ from .unify_response import UnifyResponse
 from ..const import Method
 from ..hub_a1 import (
     HubA1LookupError,
+    build_app_device_state_overrides,
     build_hub_a1_product_data,
     describe_hub_a1_lookup_response,
     has_hub_a1_telemetry,
@@ -63,6 +64,42 @@ class ProductClient(Bluetti):
             "/api/blusmartprod/device/basic/v1/deviceRemoteSearch",
             params={"deviceSn": device_sn},
         )
+
+    async def get_app_home_devices(self) -> UnifyResponse[list[dict]]:
+        """Get app-side home device records."""
+        return await self._request(
+            list[dict],
+            Method.GET,
+            "/api/blusmartprod/device/group/v1/homeDevices",
+        )
+
+    async def get_app_device_state_overrides(self, device_sn: str) -> list[dict]:
+        """Get app-side state updates for devices omitted or stale in HA APIs."""
+        app_device = await self._get_app_device_payload(device_sn)
+        return build_app_device_state_overrides(app_device)
+
+    async def _get_app_device_payload(self, device_sn: str) -> dict:
+        try:
+            response = await self.get_app_device_by_sn(device_sn)
+        except Exception as exc:
+            self.logger.debug("App-side device lookup failed: %s", exc.__class__.__name__)
+        else:
+            if response.has_data() and isinstance(response.data, dict) and response.data:
+                return response.data
+
+        try:
+            response = await self.get_app_home_devices()
+        except Exception as exc:
+            self.logger.debug("App-side home devices lookup failed: %s", exc.__class__.__name__)
+            return {}
+
+        if not response.is_ok() or not isinstance(response.data, list):
+            return {}
+
+        for item in response.data:
+            if isinstance(item, dict) and item.get("sn") == device_sn:
+                return item
+        return {}
 
     async def get_aecc_realtime_data(self, device_sn: str) -> UnifyResponse[dict]:
         """Get Hub A1 realtime AECC telemetry."""

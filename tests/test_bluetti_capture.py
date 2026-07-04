@@ -1,3 +1,5 @@
+import contextlib
+import io
 import importlib.util
 import multiprocessing
 import pathlib
@@ -22,16 +24,27 @@ def run_wait_for_oauth_code(module_path, url_file, queue):
     spec = importlib.util.spec_from_file_location("bluetti_capture_child", module_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+
+    class FakeOAuthServer:
+        oauth_result = None
+        socket = None
+
+        def server_close(self):
+            pass
+
+    module.OAuthCallbackServer = lambda *args, **kwargs: FakeOAuthServer()
+
     try:
-        module.wait_for_oauth_code(
-            "127.0.0.1",
-            8991,
-            "/callback",
-            module.DEFAULT_CLIENT_ID,
-            1,
-            False,
-            pathlib.Path(url_file),
-        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            module.wait_for_oauth_code(
+                "127.0.0.1",
+                0,
+                "/callback",
+                module.DEFAULT_CLIENT_ID,
+                0,
+                False,
+                pathlib.Path(url_file),
+            )
     except Exception as exc:
         queue.put((type(exc).__name__, str(exc)))
     else:

@@ -250,6 +250,31 @@ class BluettiDevice:
             if state_obj:
                 state_obj.fn_value = s["fnValue"]
 
+        try:
+            app_states = await api_client.get_app_device_state_overrides(self.device_id)
+        except Exception as exc:
+            __LOGGER__.debug("Unable to load app-side state overrides: %s", exc.__class__.__name__)
+            app_states = []
+
+        for s in app_states:
+            if s.get("fnCode") == "onLine":
+                self.on_line = s["fnValue"]
+                continue
+            state_obj = self.get_state(s["fnCode"])
+            if state_obj:
+                state_obj.fn_value = s["fnValue"]
+            else:
+                self.states.append(
+                    BluettiState(
+                        fn_code=s.get("fnCode"),
+                        fn_name=s.get("fnName") or "",
+                        fn_value=s.get("fnValue"),
+                        fn_type=s.get("fnType"),
+                        support_mode_values=s.get("supportModeValues"),
+                        sensor_info=s.get("sensorInfo"),
+                    )
+                )
+
         await self.publish_updates()
 
     async def _handle_unbind(self):
