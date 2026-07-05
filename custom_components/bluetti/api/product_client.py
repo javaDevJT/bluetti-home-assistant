@@ -107,7 +107,12 @@ class ProductClient(Bluetti):
                 )
 
         home_devices = await self._get_app_home_devices_payload()
-        selected = select_preferred_app_device_payload(device_sn, direct_device, home_devices)
+        selected = select_preferred_app_device_payload(
+            device_sn,
+            direct_device,
+            home_devices,
+            max_age_seconds=900,
+        )
         if selected and selected is not direct_device:
             self.logger.warning(
                 "BLUETTI app selected home-device payload: data=%s lastAlive=%s",

@@ -173,6 +173,38 @@ class HubA1Tests(unittest.TestCase):
 
         self.assertIs(selected, home)
 
+    def test_select_preferred_app_device_payload_ignores_stale_home_last_alive(self):
+        direct = {
+            "sn": TEST_APEX_SERIAL,
+            "model": "EL100V2",
+            "networkConnect": 1,
+            "batSOC": "0",
+            "powerAcOut": "0",
+            "powerPvIn": "0",
+        }
+        home = {
+            "sn": TEST_APEX_SERIAL,
+            "model": "EL100V2",
+            "networkConnect": 1,
+            "lastAlive": {
+                "allFieldIsNull": False,
+                "timestamp": "2026-07-04 13:00:00",
+                "batterySoc": "89",
+                "powerAcOut": "128",
+                "powerPvIn": "76",
+            },
+        }
+
+        selected = self.hub_a1.select_preferred_app_device_payload(
+            TEST_APEX_SERIAL,
+            direct,
+            [home],
+            now=datetime(2026, 7, 4, 14, 0, 0),
+            max_age_seconds=900,
+        )
+
+        self.assertIs(selected, direct)
+
     def test_select_hub_a1_related_app_device_prefers_apex_family_telemetry(self):
         fp = {
             "sn": "TEST-FP-SERIAL",

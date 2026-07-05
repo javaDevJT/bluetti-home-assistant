@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.8`
+- Latest release tag: `v1.1.9`
 - Integration domain: `bluetti`
-- Integration version: `1.1.8`
+- Integration version: `1.1.9`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -91,3 +91,11 @@ still be stale and can expose battery values that should not be labeled as HA1
 SOC/SOH/voltage. `v1.1.8` ignores stale related fallback rows, keeps related
 fallback limited to power/switch fields, omits related fallback battery fields
 from HA1, and logs successful periodic runtime summaries for refresh proof.
+
+## v1.1.9 Patch
+
+The `v1.1.8` runtime summaries proved the periodic refresh loop is firing, but
+matching Apex-family `homeDevices.lastAlive` rows could still override live
+direct device state with stale static app snapshots. `v1.1.9` applies the same
+freshness gate to Apex-family app override selection so stale app snapshots do
+not replace the refreshed Home Assistant device state.

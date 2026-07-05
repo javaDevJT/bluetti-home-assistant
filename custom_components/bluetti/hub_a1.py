@@ -275,12 +275,23 @@ def select_preferred_app_device_payload(
     device_sn: str,
     direct_device: dict[str, Any] | None,
     home_devices: list[dict[str, Any]] | None,
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Select the richest app-side payload for a specific device serial."""
     direct_device = direct_device or {}
     home_match = {}
     for item in home_devices or []:
-        if isinstance(item, dict) and item.get("sn") == device_sn:
+        if (
+            isinstance(item, dict)
+            and item.get("sn") == device_sn
+            and _is_recent_app_device_telemetry(
+                item,
+                now=now,
+                max_age_seconds=max_age_seconds,
+            )
+        ):
             home_match = item
             break
 
