@@ -590,8 +590,6 @@ def _hub_related_model_score(model: Any) -> int:
 
 def _is_hub_related_system_model(model: Any) -> bool:
     model_text = str(model or "").upper()
-    if model_text == "FP":
-        return True
     return any(marker in model_text for marker in ("APEX", "AP300"))
 
 

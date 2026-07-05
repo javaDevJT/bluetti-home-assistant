@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.10`
+- Latest release tag: `v1.1.11`
 - Integration domain: `bluetti`
-- Integration version: `1.1.10`
+- Integration version: `1.1.11`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -108,3 +108,10 @@ SOH/voltage/energy details and HA1-specific endpoints still returned online
 only. `v1.1.10` treats fresh `FP`/Apex system telemetry as the preferred Hub A1
 related fallback source and only permits battery SOC/SOH/voltage through that
 system-source path, preserving the guard against stale EL100V2 pack values.
+
+## v1.1.11 Patch
+
+The `v1.1.10` model gate was too broad: in the live account, `FP` is
+FridgePower, not verified Hub A1 or Apex system telemetry. `v1.1.11` removes
+`FP` from the Hub A1 related-source gate so HA1 no longer copies FridgePower SOC
+or power readings. The v1.1.9 stale snapshot guard remains in place.

@@ -14,7 +14,7 @@ class HacsMetadataTests(unittest.TestCase):
         )
 
         self.assertEqual(hacs["name"], "BLUETTI Apex and Hub A1")
-        self.assertEqual(manifest["version"], "1.1.10")
+        self.assertEqual(manifest["version"], "1.1.11")
         self.assertEqual(manifest["codeowners"], ["@javaDevJT"])
         self.assertEqual(
             manifest["documentation"],
