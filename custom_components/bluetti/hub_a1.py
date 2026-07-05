@@ -84,13 +84,39 @@ def parse_hub_a1_serials(value: Any) -> list[str]:
     if isinstance(value, (list, tuple, set)):
         parts = [str(item).strip() for item in value]
     else:
-        parts = [part.strip() for part in re.split(r"[\s,;]+", str(value))]
+        parts = [part.strip() for part in re.split(r"[\r\n,;]+", str(value))]
 
     serials: list[str] = []
     for part in parts:
-        if part and part not in serials:
+        if is_hub_a1_serial_candidate(part) and part not in serials:
             serials.append(part)
     return serials
+
+
+def is_hub_a1_serial_candidate(value: Any) -> bool:
+    """Return true for values that look like serials rather than names/models."""
+    if value is None:
+        return False
+    value_text = str(value).strip()
+    if len(value_text) < 8 or len(value_text) > 64:
+        return False
+    if any(char.isspace() for char in value_text):
+        return False
+    serial_text = value_text.replace("-", "").replace("_", "")
+    return serial_text.isalnum() and any(char.isalpha() for char in serial_text) and any(
+        char.isdigit() for char in serial_text
+    )
+
+
+def is_invalid_hub_a1_product(product: Any) -> bool:
+    """Return true for cached HA1 products whose sn is not a serial."""
+    if isinstance(product, dict):
+        model = product.get("model")
+        serial = product.get("sn")
+    else:
+        model = getattr(product, "model", None)
+        serial = getattr(product, "sn", None)
+    return str(model or "").upper() == HUB_A1_MODEL and not is_hub_a1_serial_candidate(serial)
 
 
 def build_hub_a1_product_data(

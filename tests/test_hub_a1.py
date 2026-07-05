@@ -7,7 +7,7 @@ from datetime import datetime
 
 MODULE_PATH = pathlib.Path(__file__).resolve().parents[1] / "custom_components" / "bluetti" / "hub_a1.py"
 TEST_HUB_SERIAL = "TEST-HUB-A1-SERIAL"
-TEST_APEX_SERIAL = "TEST-APEX-SERIAL"
+TEST_APEX_SERIAL = "TEST-APEX-SERIAL1"
 
 
 def load_module():
@@ -29,6 +29,19 @@ class HubA1Tests(unittest.TestCase):
         )
 
         self.assertEqual(serials, [TEST_HUB_SERIAL, TEST_APEX_SERIAL])
+
+    def test_parse_hub_a1_serials_ignores_friendly_name_words(self):
+        serials = self.hub_a1.parse_hub_a1_serials(
+            f"Hub A1,HA1,A1,{TEST_HUB_SERIAL}"
+        )
+
+        self.assertEqual(serials, [TEST_HUB_SERIAL])
+
+    def test_invalid_cached_hub_a1_product_detects_name_fragments(self):
+        self.assertTrue(self.hub_a1.is_invalid_hub_a1_product({"model": "HA1", "sn": "Hub"}))
+        self.assertTrue(self.hub_a1.is_invalid_hub_a1_product({"model": "HA1", "sn": "A1"}))
+        self.assertFalse(self.hub_a1.is_invalid_hub_a1_product({"model": "HA1", "sn": TEST_HUB_SERIAL}))
+        self.assertFalse(self.hub_a1.is_invalid_hub_a1_product({"model": "FP", "sn": "Hub"}))
 
     def test_build_hub_a1_product_data_uses_app_identity_and_telemetry(self):
         product = self.hub_a1.build_hub_a1_product_data(

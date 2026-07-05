@@ -20,7 +20,9 @@ from .api.websocket import StompClient
 from .hub_a1 import (
     HubA1LookupError,
     apply_app_device_state_overrides,
+    is_invalid_hub_a1_product,
     parse_hub_a1_serials,
+    summarize_serial_identity,
     summarize_state_values,
 )
 from .profile.application_profile import ApplicationProfile
@@ -122,6 +124,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
     # print(products.data)
 
     hub_a1_serials = parse_hub_a1_serials(entry.options.get(CONF_HUB_A1_SERIALS))
+    invalid_hub_a1_sns = {
+        product.sn
+        for product in all_products
+        if is_invalid_hub_a1_product(product)
+    }
+    if invalid_hub_a1_sns:
+        __LOGGER__.warning(
+            "Ignoring invalid cached Hub A1 entries: count=%s targets=%s",
+            len(invalid_hub_a1_sns),
+            ",".join(summarize_serial_identity(serial) for serial in sorted(invalid_hub_a1_sns)),
+        )
+        all_products = [
+            product
+            for product in all_products
+            if product.sn not in invalid_hub_a1_sns
+        ]
+        enabled_devices = [
+            serial
+            for serial in enabled_devices
+            if serial not in invalid_hub_a1_sns
+        ]
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, "products": _serialize_products(all_products)},
+            options={**entry.options, "devices": enabled_devices, CONF_HUB_A1_SERIALS: hub_a1_serials},
+        )
+
     product_sns = {p.sn for p in all_products}
     products_changed = False
     for serial in hub_a1_serials:

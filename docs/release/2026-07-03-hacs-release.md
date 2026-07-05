@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.13`
+- Latest release tag: `v1.1.14`
 - Integration domain: `bluetti`
-- Integration version: `1.1.13`
+- Integration version: `1.1.14`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -132,3 +132,11 @@ non-HA1 app telemetry continued refreshing. `v1.1.13` adds serial-safe target
 hash/length diagnostics to app direct lookup, HA1 optional telemetry, and app
 home-device serial matching so the next runtime log can prove whether Home
 Assistant is querying the same Hub A1 serial that succeeded in capture.
+
+## v1.1.14 Patch
+
+The `v1.1.13` diagnostics proved the runtime was querying `Hub` and `A1`
+instead of a real Hub A1 serial because the friendly name `Hub A1` had been
+entered in the serial field and split on whitespace. `v1.1.14` rejects
+friendly-name/model fragments as Hub A1 serials and removes cached synthetic
+HA1 products with invalid short `sn` values during setup.
