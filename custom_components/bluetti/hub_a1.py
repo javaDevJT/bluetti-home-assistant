@@ -55,11 +55,20 @@ RELATED_HUB_A1_FALLBACK_KEYS = {
     "dcSwitch",
     "dcTotalEnergy",
     "gridSwitch",
+    "powerLoadOut",
     "powerAcOut",
     "powerDcOut",
     "powerGridIn",
     "powerPvIn",
     "timestamp",
+}
+
+RELATED_HUB_A1_SYSTEM_FALLBACK_KEYS = {
+    "batterySoc",
+    "batterySoh",
+    "batteryVoltage",
+    "meterTotalEnergy",
+    "powerBatteryCharge",
 }
 
 
@@ -339,10 +348,13 @@ def build_related_hub_a1_fallback_product_data(
     related_last_alive = related_app_device.get("lastAlive")
     if not isinstance(related_last_alive, dict):
         related_last_alive = {}
+    fallback_keys = RELATED_HUB_A1_FALLBACK_KEYS
+    if _is_hub_related_system_model(related_app_device.get("model")):
+        fallback_keys = fallback_keys | RELATED_HUB_A1_SYSTEM_FALLBACK_KEYS
     fallback_last_alive = {
         key: value
         for key, value in related_last_alive.items()
-        if key in RELATED_HUB_A1_FALLBACK_KEYS
+        if key in fallback_keys
     }
     fallback_app_device = {
         "model": HUB_A1_MODEL,
@@ -388,12 +400,12 @@ def build_hub_a1_state_list(
             "Battery Voltage",
             _first(last_alive.get("batteryVoltage"), _first_detail_value(battery_details, "voltage")),
         ),
-        _power_sensor("HubA1AcPowerOut", "AC Output Power", _first(realtime.get("powerLoadOut"), last_alive.get("powerAcOut"), app_device.get("powerAcOut"))),
+        _power_sensor("HubA1AcPowerOut", "AC Output Power", _first(realtime.get("powerLoadOut"), last_alive.get("powerLoadOut"), last_alive.get("powerAcOut"), app_device.get("powerAcOut"))),
         _power_sensor("HubA1DcPowerOut", "DC Output Power", _first(last_alive.get("powerDcOut"), app_device.get("powerDcOut"))),
         _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first(realtime.get("powerGridIn"), last_alive.get("powerGridIn"), app_device.get("powerGridIn"))),
         _power_sensor("HubA1PvPowerIn", "PV Input Power", _first(realtime.get("powerPvIn"), last_alive.get("powerPvIn"), app_device.get("powerPvIn"))),
-        _power_sensor("HubA1BatteryChargePower", "Battery Charge Power", realtime.get("powerBatteryCharge")),
-        _energy_sensor("HubA1MeterTotalEnergy", "Meter Total Energy", realtime.get("meterTotalEnergy")),
+        _power_sensor("HubA1BatteryChargePower", "Battery Charge Power", _first(realtime.get("powerBatteryCharge"), last_alive.get("powerBatteryCharge"))),
+        _energy_sensor("HubA1MeterTotalEnergy", "Meter Total Energy", _first(realtime.get("meterTotalEnergy"), last_alive.get("meterTotalEnergy"))),
         _energy_sensor("HubA1DcTotalEnergy", "DC Total Energy", last_alive.get("dcTotalEnergy")),
         _binary_sensor("HubA1AcSwitch", "AC Switch", last_alive.get("acSwitch")),
         _binary_sensor("HubA1DcSwitch", "DC Switch", last_alive.get("dcSwitch")),
@@ -567,11 +579,20 @@ def _parse_bluetti_timestamp(value: Any) -> datetime | None:
 
 def _hub_related_model_score(model: Any) -> int:
     model_text = str(model or "").upper()
-    if any(marker in model_text for marker in ("EL100", "APEX", "AP300")):
+    if _is_hub_related_system_model(model):
+        return 120
+    if "EL100" in model_text:
         return 100
     if "HA1" in model_text:
         return 90
     return 0
+
+
+def _is_hub_related_system_model(model: Any) -> bool:
+    model_text = str(model or "").upper()
+    if model_text == "FP":
+        return True
+    return any(marker in model_text for marker in ("APEX", "AP300"))
 
 
 def _iter_payload_scalars(payload: Any, prefix: str = ""):

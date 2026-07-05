@@ -205,11 +205,12 @@ class HubA1Tests(unittest.TestCase):
 
         self.assertIs(selected, direct)
 
-    def test_select_hub_a1_related_app_device_prefers_apex_family_telemetry(self):
+    def test_select_hub_a1_related_app_device_prefers_fresh_fp_system_telemetry(self):
         fp = {
             "sn": "TEST-FP-SERIAL",
             "model": "FP",
             "lastAlive": {
+                "timestamp": "2026-07-04 21:42:17",
                 "batterySoc": "65",
                 "powerAcOut": "66",
                 "powerPvIn": "12",
@@ -220,15 +221,20 @@ class HubA1Tests(unittest.TestCase):
             "model": "EL100V2",
             "lastAlive": {
                 "allFieldIsNull": False,
+                "timestamp": "2026-07-04 21:42:17",
                 "batterySoc": "89",
                 "powerAcOut": "128",
                 "powerPvIn": "76",
             },
         }
 
-        selected = self.hub_a1.select_hub_a1_related_app_device([fp, apex])
+        selected = self.hub_a1.select_hub_a1_related_app_device(
+            [fp, apex],
+            now=datetime(2026, 7, 4, 21, 43, 0),
+            max_age_seconds=900,
+        )
 
-        self.assertIs(selected, apex)
+        self.assertIs(selected, fp)
 
     def test_select_hub_a1_related_app_device_ignores_null_last_alive_payloads(self):
         selected = self.hub_a1.select_hub_a1_related_app_device(
@@ -293,6 +299,31 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "128")
         self.assertEqual(states_by_code["HubA1PvPowerIn"]["fnValue"], "76")
         self.assertEqual(states_by_code["HubA1AcSwitch"]["fnValue"], "1")
+
+    def test_build_related_hub_a1_fallback_uses_fp_system_battery_fields(self):
+        product = self.hub_a1.build_related_hub_a1_fallback_product_data(
+            TEST_HUB_SERIAL,
+            {
+                "model": "FP",
+                "networkConnect": 1,
+                "sessionState": "Online",
+                "lastAlive": {
+                    "timestamp": "2026-07-04 21:42:17",
+                    "batterySoc": "44",
+                    "batterySoh": "100",
+                    "batteryVoltage": "533.0",
+                    "powerAcOut": "69",
+                    "powerPvIn": "0",
+                    "acSwitch": "1",
+                },
+            },
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertEqual(states_by_code["HubA1BatterySoc"]["fnValue"], "44")
+        self.assertEqual(states_by_code["HubA1BatterySoh"]["fnValue"], "100")
+        self.assertEqual(states_by_code["HubA1BatteryVoltage"]["fnValue"], "533.0")
+        self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "69")
 
     def test_build_app_device_state_overrides_returns_empty_without_app_payload(self):
         self.assertEqual(self.hub_a1.build_app_device_state_overrides({}), [])

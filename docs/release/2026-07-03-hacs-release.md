@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.9`
+- Latest release tag: `v1.1.10`
 - Integration domain: `bluetti`
-- Integration version: `1.1.9`
+- Integration version: `1.1.10`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -99,3 +99,12 @@ matching Apex-family `homeDevices.lastAlive` rows could still override live
 direct device state with stale static app snapshots. `v1.1.9` applies the same
 freshness gate to Apex-family app override selection so stale app snapshots do
 not replace the refreshed Home Assistant device state.
+
+## v1.1.10 Patch
+
+The `v1.1.9` runtime summaries showed fresh app-side system telemetry arriving
+from the `FP` row every refresh cycle while the `EL100V2` row only exposed pack
+SOH/voltage/energy details and HA1-specific endpoints still returned online
+only. `v1.1.10` treats fresh `FP`/Apex system telemetry as the preferred Hub A1
+related fallback source and only permits battery SOC/SOH/voltage through that
+system-source path, preserving the guard against stale EL100V2 pack values.
