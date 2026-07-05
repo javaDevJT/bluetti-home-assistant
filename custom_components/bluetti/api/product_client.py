@@ -16,6 +16,7 @@ from ..hub_a1 import (
     select_hub_a1_related_app_device,
     select_preferred_app_device_payload,
     summarize_app_home_device_serials,
+    summarize_hub_a1_field_sources,
     summarize_payload_values,
     summarize_serial_identity,
     summarize_state_values,
@@ -235,6 +236,16 @@ class ProductClient(Bluetti):
         pv_details = await self._optional_response_data("pvDetails", self.get_aecc_pv_detail_data, device_sn, [])
         load_details = await self._optional_response_data("loadDetails", self.get_aecc_load_detail_data, device_sn, [])
         grid_details = await self._optional_response_data("gridDetails", self.get_aecc_grid_detail_data, device_sn, [])
+        self.logger.warning(
+            "Hub A1 selected field source summary: target=%s %s",
+            serial_summary,
+            summarize_hub_a1_field_sources(
+                app_device=app_device,
+                realtime=realtime,
+                last_alive=last_alive,
+                battery_details=battery_details,
+            ),
+        )
 
         if not app_device and not has_hub_a1_telemetry(
             realtime=realtime,

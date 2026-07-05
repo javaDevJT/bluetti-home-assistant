@@ -164,7 +164,7 @@ def has_hub_a1_telemetry(
 ) -> bool:
     """Return true when any Hub A1 telemetry endpoint returned usable data."""
     return any(
-        bool(value)
+        _telemetry_payload_score(value) > 0
         for value in (
             realtime,
             last_alive,
@@ -288,6 +288,112 @@ def summarize_payload_values(payload: Any, *, limit: int = 6) -> str:
         ]
     )
     return " ".join(parts)
+
+
+def summarize_hub_a1_field_sources(
+    *,
+    app_device: dict[str, Any] | None = None,
+    realtime: dict[str, Any] | None = None,
+    last_alive: dict[str, Any] | None = None,
+    battery_details: list[dict[str, Any]] | None = None,
+) -> str:
+    """Return a concise summary of the source selected for key HA1 fields."""
+    app_device = app_device or {}
+    realtime = realtime or {}
+    last_alive = last_alive or {}
+    battery_details = battery_details or []
+
+    fields = [
+        (
+            "BatterySoc",
+            [
+                ("lastAlive.batterySoc", last_alive.get("batterySoc")),
+                ("realtime.batterySoc", realtime.get("batterySoc")),
+                ("app.batSOC", app_device.get("batSOC")),
+            ],
+        ),
+        (
+            "BatteryVoltage",
+            [
+                ("lastAlive.batteryVoltage", last_alive.get("batteryVoltage")),
+                ("batteryDetails.voltage", _first_detail_value(battery_details, "voltage")),
+            ],
+        ),
+        (
+            "AcPowerOut",
+            [
+                ("realtime.powerLoadOut", realtime.get("powerLoadOut")),
+                ("lastAlive.powerLoadOut", last_alive.get("powerLoadOut")),
+                ("lastAlive.powerAcOut", last_alive.get("powerAcOut")),
+                ("app.powerAcOut", app_device.get("powerAcOut")),
+            ],
+        ),
+        (
+            "GridPowerIn",
+            [
+                ("realtime.powerGridIn", realtime.get("powerGridIn")),
+                ("lastAlive.powerGridIn", last_alive.get("powerGridIn")),
+                ("lastAlive.powerFeedBack", last_alive.get("powerFeedBack")),
+                ("app.powerGridIn", app_device.get("powerGridIn")),
+            ],
+        ),
+        (
+            "PvPowerIn",
+            [
+                ("realtime.powerPvIn", realtime.get("powerPvIn")),
+                ("lastAlive.powerPvIn", last_alive.get("powerPvIn")),
+                ("app.powerPvIn", app_device.get("powerPvIn")),
+            ],
+        ),
+        (
+            "DcPowerOut",
+            [
+                ("lastAlive.powerDcOut", last_alive.get("powerDcOut")),
+                ("app.powerDcOut", app_device.get("powerDcOut")),
+            ],
+        ),
+        (
+            "BatteryChargePower",
+            [
+                ("realtime.powerBatteryCharge", realtime.get("powerBatteryCharge")),
+                ("lastAlive.powerBatteryCharge", last_alive.get("powerBatteryCharge")),
+            ],
+        ),
+        (
+            "MeterTotalEnergy",
+            [
+                ("realtime.meterTotalEnergy", realtime.get("meterTotalEnergy")),
+                ("lastAlive.meterTotalEnergy", last_alive.get("meterTotalEnergy")),
+            ],
+        ),
+        (
+            "PackTotalChargeEnergy",
+            [("lastAlive.packTotalChgEnergy", last_alive.get("packTotalChgEnergy"))],
+        ),
+        (
+            "PackTotalDischargeEnergy",
+            [("lastAlive.packTotalDsgEnergy", last_alive.get("packTotalDsgEnergy"))],
+        ),
+    ]
+
+    return ",".join(_selected_source_summary(name, sources) for name, sources in fields)
+
+
+def _selected_source_summary(field_name: str, sources: list[tuple[str, Any]]) -> str:
+    first_present: tuple[str, Any] | None = None
+    for label, value in sources:
+        if value is None or value == "":
+            continue
+        if first_present is None:
+            first_present = (label, value)
+        if not _is_zero_value(value):
+            safe_value = _redact_identifier_text(str(value))
+            return f"{field_name}={label}:{safe_value}"
+    if first_present is None:
+        return f"{field_name}=none"
+    label, value = first_present
+    safe_value = _redact_identifier_text(str(value))
+    return f"{field_name}=zero:{label}:{safe_value}"
 
 
 def summarize_serial_identity(value: Any) -> str:
@@ -471,11 +577,13 @@ def build_hub_a1_state_list(
         ),
         _power_sensor("HubA1AcPowerOut", "AC Output Power", _first_nonzero(realtime.get("powerLoadOut"), last_alive.get("powerLoadOut"), last_alive.get("powerAcOut"), app_device.get("powerAcOut"))),
         _power_sensor("HubA1DcPowerOut", "DC Output Power", _first_nonzero(last_alive.get("powerDcOut"), app_device.get("powerDcOut"))),
-        _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first_nonzero(realtime.get("powerGridIn"), last_alive.get("powerGridIn"), app_device.get("powerGridIn"))),
+        _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first_nonzero(realtime.get("powerGridIn"), last_alive.get("powerGridIn"), last_alive.get("powerFeedBack"), app_device.get("powerGridIn"))),
         _power_sensor("HubA1PvPowerIn", "PV Input Power", _first_nonzero(realtime.get("powerPvIn"), last_alive.get("powerPvIn"), app_device.get("powerPvIn"))),
-        _power_sensor("HubA1BatteryChargePower", "Battery Charge Power", _first(realtime.get("powerBatteryCharge"), last_alive.get("powerBatteryCharge"))),
-        _energy_sensor("HubA1MeterTotalEnergy", "Meter Total Energy", _first(realtime.get("meterTotalEnergy"), last_alive.get("meterTotalEnergy"))),
+        _power_sensor("HubA1BatteryChargePower", "Battery Charge Power", _first_nonzero(realtime.get("powerBatteryCharge"), last_alive.get("powerBatteryCharge"))),
+        _energy_sensor("HubA1MeterTotalEnergy", "Meter Total Energy", _first_nonzero(realtime.get("meterTotalEnergy"), last_alive.get("meterTotalEnergy"))),
         _energy_sensor("HubA1DcTotalEnergy", "DC Total Energy", last_alive.get("dcTotalEnergy")),
+        _energy_sensor("HubA1PackTotalChargeEnergy", "Pack Total Charge Energy", last_alive.get("packTotalChgEnergy"), unit="Wh"),
+        _energy_sensor("HubA1PackTotalDischargeEnergy", "Pack Total Discharge Energy", last_alive.get("packTotalDsgEnergy"), unit="Wh"),
         _binary_sensor("HubA1AcSwitch", "AC Switch", last_alive.get("acSwitch")),
         _binary_sensor("HubA1DcSwitch", "DC Switch", last_alive.get("dcSwitch")),
         _binary_sensor("HubA1GridSwitch", "Grid Switch", last_alive.get("gridSwitch")),
@@ -571,6 +679,8 @@ def _append_detail_states(
     include_status: bool = False,
 ) -> None:
     for index, row in enumerate(rows, start=1):
+        if not _has_nonzero_detail_state(row, include_status=include_status):
+            continue
         label = str(row.get("portName") or f"{default_label} {index}").strip()
         states.append(_power_sensor(f"{prefix}{index}Power", f"{label} Power", row.get("power")))
         states.append(_voltage_sensor(f"{prefix}{index}Voltage", f"{label} Voltage", row.get("voltage")))
@@ -602,7 +712,24 @@ def _first_detail_value(rows: list[dict[str, Any]], key: str) -> Any:
 
 def _is_zero_value(value: Any) -> bool:
     value_text = str(value).strip().lower()
-    return value_text in {"0", "0.0", "false", "off"}
+    if value_text in {"false", "off"}:
+        return True
+    try:
+        return float(value_text) == 0
+    except ValueError:
+        return False
+
+
+def _has_nonzero_detail_state(row: dict[str, Any], *, include_status: bool) -> bool:
+    keys = ["power", "voltage"]
+    if include_status:
+        keys.append("status")
+    return any(
+        row.get(key) is not None
+        and row.get(key) != ""
+        and not _is_zero_value(row.get(key))
+        for key in keys
+    )
 
 
 def _telemetry_payload_score(payload: Any) -> int:
@@ -752,8 +879,8 @@ def _duration_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] |
     return _sensor(fn_code, fn_name, value, "SensorDeviceClass.DURATION", "min")
 
 
-def _energy_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | None:
-    return _sensor(fn_code, fn_name, value, SENSOR_TYPE_ENERGY, "kWh")
+def _energy_sensor(fn_code: str, fn_name: str, value: Any, *, unit: str = "kWh") -> dict[str, Any] | None:
+    return _sensor(fn_code, fn_name, value, SENSOR_TYPE_ENERGY, unit)
 
 
 def _power_sensor(fn_code: str, fn_name: str, value: Any) -> dict[str, Any] | None:

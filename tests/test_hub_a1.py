@@ -90,8 +90,8 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "2536")
         self.assertEqual(states_by_code["HubA1GridPowerIn"]["fnValue"], "2452")
         self.assertEqual(states_by_code["HubA1BatteryVoltage"]["sensorInfo"]["unit"], "V")
-        self.assertEqual(states_by_code["HubA1Pv1Power"]["fnName"], "PV1 Power")
-        self.assertEqual(states_by_code["HubA1Pv2Voltage"]["fnName"], "PV2 Voltage")
+        self.assertNotIn("HubA1Pv1Power", states_by_code)
+        self.assertNotIn("HubA1Pv2Voltage", states_by_code)
         self.assertEqual(states_by_code["HubA1AcSwitch"]["fnType"], "SENSOR")
         self.assertEqual(states_by_code["onLine"]["fnValue"], "1")
 
@@ -156,6 +156,84 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "2536")
         self.assertEqual(states_by_code["HubA1GridPowerIn"]["fnValue"], "2452")
         self.assertEqual(states_by_code["HubA1PvPowerIn"]["fnValue"], "0")
+
+    def test_build_hub_a1_product_data_uses_last_alive_grid_alias(self):
+        product = self.hub_a1.build_hub_a1_product_data(
+            TEST_HUB_SERIAL,
+            app_device={
+                "sn": TEST_HUB_SERIAL,
+                "name": "Garage Hub",
+                "model": "HA1",
+                "sessionState": "Online",
+                "powerGridIn": "0",
+            },
+            realtime={"powerGridIn": "0"},
+            last_alive={"powerFeedBack": "2452"},
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertEqual(states_by_code["HubA1GridPowerIn"]["fnValue"], "2452")
+
+    def test_build_hub_a1_product_data_prefers_nonzero_last_alive_over_realtime_zero(self):
+        product = self.hub_a1.build_hub_a1_product_data(
+            TEST_HUB_SERIAL,
+            app_device={"sn": TEST_HUB_SERIAL, "name": "Garage Hub", "model": "HA1"},
+            realtime={
+                "powerBatteryCharge": "0",
+                "meterTotalEnergy": "0",
+            },
+            last_alive={
+                "powerBatteryCharge": "42",
+                "meterTotalEnergy": "13.7",
+            },
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertEqual(states_by_code["HubA1BatteryChargePower"]["fnValue"], "42")
+        self.assertEqual(states_by_code["HubA1MeterTotalEnergy"]["fnValue"], "13.7")
+
+    def test_build_hub_a1_product_data_exposes_last_alive_pack_energy(self):
+        product = self.hub_a1.build_hub_a1_product_data(
+            TEST_HUB_SERIAL,
+            app_device={"sn": TEST_HUB_SERIAL, "name": "Garage Hub", "model": "HA1"},
+            last_alive={
+                "packTotalChgEnergy": "52975.0",
+                "packTotalDsgEnergy": "52975.0",
+            },
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["fnValue"], "52975.0")
+        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["sensorInfo"]["unit"], "Wh")
+        self.assertEqual(states_by_code["HubA1PackTotalDischargeEnergy"]["fnValue"], "52975.0")
+        self.assertEqual(states_by_code["HubA1PackTotalDischargeEnergy"]["sensorInfo"]["unit"], "Wh")
+
+    def test_build_hub_a1_product_data_keeps_detail_rows_with_nonzero_readings(self):
+        product = self.hub_a1.build_hub_a1_product_data(
+            TEST_HUB_SERIAL,
+            app_device={"sn": TEST_HUB_SERIAL, "name": "Garage Hub", "model": "HA1"},
+            pv_details=[
+                {"portName": "PV1", "power": "0", "voltage": "0"},
+                {"portName": "PV2", "power": "76", "voltage": "42"},
+            ],
+            load_details=[{"portName": "L1", "power": "128", "voltage": "120"}],
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertNotIn("HubA1Pv1Power", states_by_code)
+        self.assertEqual(states_by_code["HubA1Pv2Power"]["fnValue"], "76")
+        self.assertEqual(states_by_code["HubA1Pv2Voltage"]["fnValue"], "42")
+        self.assertEqual(states_by_code["HubA1Load1Power"]["fnValue"], "128")
+
+    def test_summarize_hub_a1_field_sources_reports_selected_aliases(self):
+        summary = self.hub_a1.summarize_hub_a1_field_sources(
+            app_device={"powerGridIn": "0"},
+            realtime={"powerGridIn": "0"},
+            last_alive={"powerFeedBack": "2452"},
+        )
+
+        self.assertIn("GridPowerIn=lastAlive.powerFeedBack:2452", summary)
+        self.assertIn("BatterySoc=none", summary)
 
     def test_build_app_device_state_overrides_prefers_last_alive_for_apex_zero_fields(self):
         states = self.hub_a1.build_app_device_state_overrides(
@@ -561,12 +639,22 @@ class HubA1Tests(unittest.TestCase):
                 grid_details=[],
             )
         )
-        self.assertTrue(
+        self.assertFalse(
             self.hub_a1.has_hub_a1_telemetry(
                 realtime={},
                 last_alive={},
                 battery_details=[],
                 pv_details=[{"power": "0", "voltage": "0"}],
+                load_details=[],
+                grid_details=[],
+            )
+        )
+        self.assertTrue(
+            self.hub_a1.has_hub_a1_telemetry(
+                realtime={},
+                last_alive={"acSwitch": "1"},
+                battery_details=[],
+                pv_details=[],
                 load_details=[],
                 grid_details=[],
             )

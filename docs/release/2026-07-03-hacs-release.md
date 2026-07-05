@@ -148,3 +148,14 @@ serial returns plausible SOC data, but the field previously labeled
 `HubA1BatterySoh` reported an unlikely value. `v1.1.15` stops publishing that
 unverified HA1 SOH percentage while leaving SOC, voltage, switch state, detail
 rows, and the existing 60-second polling path in place.
+
+## v1.1.16 Patch
+
+The zero-value investigation showed HA1 realtime/detail endpoints can return
+placeholder zeros while `lastAlive` and direct app lookup carry useful fields
+under alternate names. `v1.1.16` maps the HA1 grid input alias
+`powerFeedBack`, prefers non-zero lastAlive values over realtime zero
+placeholders for charge power and meter energy, adds HA1 pack total
+charge/discharge energy in Wh, suppresses label-only all-zero detail rows on
+fresh setup, and logs a targeted HA1 field-source summary for future runtime
+checks.
