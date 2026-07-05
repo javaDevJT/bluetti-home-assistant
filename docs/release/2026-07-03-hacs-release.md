@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.14`
+- Latest release tag: `v1.1.15`
 - Integration domain: `bluetti`
-- Integration version: `1.1.14`
+- Integration version: `1.1.15`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -140,3 +140,11 @@ instead of a real Hub A1 serial because the friendly name `Hub A1` had been
 entered in the serial field and split on whitespace. `v1.1.14` rejects
 friendly-name/model fragments as Hub A1 serials and removes cached synthetic
 HA1 products with invalid short `sn` values during setup.
+
+## v1.1.15 Patch
+
+The `v1.1.14` runtime log confirmed HA1 polling is active and the real Hub A1
+serial returns plausible SOC data, but the field previously labeled
+`HubA1BatterySoh` reported an unlikely value. `v1.1.15` stops publishing that
+unverified HA1 SOH percentage while leaving SOC, voltage, switch state, detail
+rows, and the existing 60-second polling path in place.

@@ -464,7 +464,6 @@ def build_hub_a1_state_list(
     states = [
         _binary_sensor("onLine", "Online", _online_value(app_device, last_alive)),
         _battery_sensor("HubA1BatterySoc", "Battery SOC", _first_nonzero(last_alive.get("batterySoc"), realtime.get("batterySoc"), app_device.get("batSOC"))),
-        _battery_sensor("HubA1BatterySoh", "Battery SOH", last_alive.get("batterySoh")),
         _voltage_sensor(
             "HubA1BatteryVoltage",
             "Battery Voltage",

@@ -86,6 +86,7 @@ class HubA1Tests(unittest.TestCase):
         states_by_code = {state["fnCode"]: state for state in product["stateList"]}
         self.assertEqual(states_by_code["HubA1BatterySoc"]["fnValue"], "9")
         self.assertEqual(states_by_code["HubA1BatterySoc"]["sensorInfo"]["unit"], "%")
+        self.assertNotIn("HubA1BatterySoh", states_by_code)
         self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "2536")
         self.assertEqual(states_by_code["HubA1GridPowerIn"]["fnValue"], "2452")
         self.assertEqual(states_by_code["HubA1BatteryVoltage"]["sensorInfo"]["unit"], "V")
