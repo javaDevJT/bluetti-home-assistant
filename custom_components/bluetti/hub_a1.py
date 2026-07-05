@@ -393,17 +393,17 @@ def build_hub_a1_state_list(
 
     states = [
         _binary_sensor("onLine", "Online", _online_value(app_device, last_alive)),
-        _battery_sensor("HubA1BatterySoc", "Battery SOC", _first(last_alive.get("batterySoc"), realtime.get("batterySoc"), app_device.get("batSOC"))),
+        _battery_sensor("HubA1BatterySoc", "Battery SOC", _first_nonzero(last_alive.get("batterySoc"), realtime.get("batterySoc"), app_device.get("batSOC"))),
         _battery_sensor("HubA1BatterySoh", "Battery SOH", last_alive.get("batterySoh")),
         _voltage_sensor(
             "HubA1BatteryVoltage",
             "Battery Voltage",
             _first(last_alive.get("batteryVoltage"), _first_detail_value(battery_details, "voltage")),
         ),
-        _power_sensor("HubA1AcPowerOut", "AC Output Power", _first(realtime.get("powerLoadOut"), last_alive.get("powerLoadOut"), last_alive.get("powerAcOut"), app_device.get("powerAcOut"))),
-        _power_sensor("HubA1DcPowerOut", "DC Output Power", _first(last_alive.get("powerDcOut"), app_device.get("powerDcOut"))),
-        _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first(realtime.get("powerGridIn"), last_alive.get("powerGridIn"), app_device.get("powerGridIn"))),
-        _power_sensor("HubA1PvPowerIn", "PV Input Power", _first(realtime.get("powerPvIn"), last_alive.get("powerPvIn"), app_device.get("powerPvIn"))),
+        _power_sensor("HubA1AcPowerOut", "AC Output Power", _first_nonzero(realtime.get("powerLoadOut"), last_alive.get("powerLoadOut"), last_alive.get("powerAcOut"), app_device.get("powerAcOut"))),
+        _power_sensor("HubA1DcPowerOut", "DC Output Power", _first_nonzero(last_alive.get("powerDcOut"), app_device.get("powerDcOut"))),
+        _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first_nonzero(realtime.get("powerGridIn"), last_alive.get("powerGridIn"), app_device.get("powerGridIn"))),
+        _power_sensor("HubA1PvPowerIn", "PV Input Power", _first_nonzero(realtime.get("powerPvIn"), last_alive.get("powerPvIn"), app_device.get("powerPvIn"))),
         _power_sensor("HubA1BatteryChargePower", "Battery Charge Power", _first(realtime.get("powerBatteryCharge"), last_alive.get("powerBatteryCharge"))),
         _energy_sensor("HubA1MeterTotalEnergy", "Meter Total Energy", _first(realtime.get("meterTotalEnergy"), last_alive.get("meterTotalEnergy"))),
         _energy_sensor("HubA1DcTotalEnergy", "DC Total Energy", last_alive.get("dcTotalEnergy")),
@@ -514,6 +514,13 @@ def _first(*values: Any) -> Any:
         if value is not None and value != "":
             return value
     return None
+
+
+def _first_nonzero(*values: Any) -> Any:
+    for value in values:
+        if value is not None and value != "" and not _is_zero_value(value):
+            return value
+    return _first(*values)
 
 
 def _first_detail_value(rows: list[dict[str, Any]], key: str) -> Any:

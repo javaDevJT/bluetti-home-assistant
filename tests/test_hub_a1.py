@@ -107,6 +107,41 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["HubA1GridPowerIn"]["fnValue"], "12")
         self.assertEqual(states_by_code["HubA1PvPowerIn"]["fnValue"], "76")
 
+    def test_build_hub_a1_product_data_uses_direct_app_values_over_zero_optional_telemetry(self):
+        product = self.hub_a1.build_hub_a1_product_data(
+            TEST_HUB_SERIAL,
+            app_device={
+                "sn": TEST_HUB_SERIAL,
+                "name": "Garage Hub",
+                "model": "HA1",
+                "sessionState": "Online",
+                "batSOC": "9",
+                "powerAcOut": 2536,
+                "powerGridIn": 2452,
+                "powerPvIn": 0,
+                "powerDcOut": 0,
+            },
+            realtime={
+                "batterySoc": "0",
+                "powerLoadOut": "0",
+                "powerGridIn": "0",
+                "powerPvIn": "0",
+            },
+            last_alive={
+                "allFieldIsNull": True,
+                "batterySoc": "0",
+                "powerAcOut": "0",
+                "powerGridIn": "0",
+                "powerPvIn": "0",
+            },
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertEqual(states_by_code["HubA1BatterySoc"]["fnValue"], "9")
+        self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "2536")
+        self.assertEqual(states_by_code["HubA1GridPowerIn"]["fnValue"], "2452")
+        self.assertEqual(states_by_code["HubA1PvPowerIn"]["fnValue"], "0")
+
     def test_build_app_device_state_overrides_prefers_last_alive_for_apex_zero_fields(self):
         states = self.hub_a1.build_app_device_state_overrides(
             {
