@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import pathlib
 import unittest
 from datetime import datetime
@@ -489,6 +490,29 @@ class HubA1Tests(unittest.TestCase):
         self.assertIn("zero=2", summary)
         self.assertIn("PV2.power=76", summary)
         self.assertNotIn("raw", summary.lower())
+
+    def test_summarize_serial_identity_hashes_without_exposing_value(self):
+        summary = self.hub_a1.summarize_serial_identity(f" {TEST_HUB_SERIAL} ")
+        digest = hashlib.sha256(TEST_HUB_SERIAL.encode("utf-8")).hexdigest()[:16]
+
+        self.assertIn("len=18", summary)
+        self.assertIn(f"sha256={digest}", summary)
+        self.assertNotIn(TEST_HUB_SERIAL, summary)
+
+    def test_summarize_app_home_device_serials_reports_redacted_target_match(self):
+        summary = self.hub_a1.summarize_app_home_device_serials(
+            TEST_HUB_SERIAL,
+            [
+                {"sn": TEST_APEX_SERIAL, "model": "FP"},
+                {"sn": TEST_HUB_SERIAL, "model": "HA1"},
+            ],
+        )
+
+        self.assertIn("home_devices=2", summary)
+        self.assertIn("matches=1", summary)
+        self.assertIn("HA1:len=18", summary)
+        self.assertNotIn(TEST_HUB_SERIAL, summary)
+        self.assertNotIn(TEST_APEX_SERIAL, summary)
 
     def test_build_hub_a1_product_data_falls_back_to_serial_name(self):
         product = self.hub_a1.build_hub_a1_product_data(

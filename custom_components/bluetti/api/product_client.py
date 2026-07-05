@@ -15,7 +15,9 @@ from ..hub_a1 import (
     has_hub_a1_telemetry,
     select_hub_a1_related_app_device,
     select_preferred_app_device_payload,
+    summarize_app_home_device_serials,
     summarize_payload_values,
+    summarize_serial_identity,
     summarize_state_values,
 )
 from ..model.product import UserProduct
@@ -86,22 +88,29 @@ class ProductClient(Bluetti):
 
     async def _get_app_device_payload(self, device_sn: str) -> dict:
         direct_device = {}
+        serial_summary = summarize_serial_identity(device_sn)
         try:
             response = await self.get_app_device_by_sn(device_sn)
         except Exception as exc:
-            self.logger.warning("BLUETTI app direct lookup summary: error=%s", exc.__class__.__name__)
+            self.logger.warning(
+                "BLUETTI app direct lookup summary: target=%s error=%s",
+                serial_summary,
+                exc.__class__.__name__,
+            )
         else:
             if response.has_data() and isinstance(response.data, dict) and response.data:
                 direct_device = response.data
                 self.logger.warning(
-                    "BLUETTI app direct lookup summary: status=%s data=%s lastAlive=%s",
+                    "BLUETTI app direct lookup summary: target=%s status=%s data=%s lastAlive=%s",
+                    serial_summary,
                     describe_hub_a1_lookup_response(response),
                     summarize_payload_values(response.data),
                     summarize_payload_values(response.data.get("lastAlive") if isinstance(response.data.get("lastAlive"), dict) else {}),
                 )
             else:
                 self.logger.warning(
-                    "BLUETTI app direct lookup summary: status=%s data=%s",
+                    "BLUETTI app direct lookup summary: target=%s status=%s data=%s",
+                    serial_summary,
                     describe_hub_a1_lookup_response(response),
                     summarize_payload_values(response.data),
                 )
@@ -201,6 +210,7 @@ class ProductClient(Bluetti):
         """Build a UserProduct-shaped Hub A1 object from read-only app APIs."""
         app_device = {}
         app_lookup_status = "not requested"
+        serial_summary = summarize_serial_identity(device_sn)
 
         try:
             app_device_response = await self.get_app_device_by_sn(device_sn)
@@ -212,7 +222,8 @@ class ProductClient(Bluetti):
                 app_device = app_device_response.data
 
         self.logger.warning(
-            "Hub A1 app lookup summary: status=%s data=%s lastAlive=%s",
+            "Hub A1 app lookup summary: target=%s status=%s data=%s lastAlive=%s",
+            serial_summary,
             app_lookup_status,
             summarize_payload_values(app_device),
             summarize_payload_values(app_device.get("lastAlive") if isinstance(app_device.get("lastAlive"), dict) else {}),
@@ -248,8 +259,13 @@ class ProductClient(Bluetti):
             grid_details=grid_details,
         )
         if not has_meaningful_state_values(product_data["stateList"]):
+            home_devices = await self._get_app_home_devices_payload()
+            self.logger.warning(
+                "Hub A1 app home serial summary: %s",
+                summarize_app_home_device_serials(device_sn, home_devices),
+            )
             related_app_device = select_hub_a1_related_app_device(
-                await self._get_app_home_devices_payload(),
+                home_devices,
                 max_age_seconds=900,
             )
             related_last_alive = (
@@ -274,27 +290,31 @@ class ProductClient(Bluetti):
         return UserProduct.model_validate(product_data)
 
     async def _optional_response_data(self, label: str, request, device_sn: str, default):
+        serial_summary = summarize_serial_identity(device_sn)
         try:
             response = await request(device_sn)
         except Exception as exc:
             self.logger.warning(
-                "Hub A1 optional telemetry summary: endpoint=%s error=%s",
+                "Hub A1 optional telemetry summary: endpoint=%s target=%s error=%s",
                 label,
+                serial_summary,
                 exc.__class__.__name__,
             )
             return default
         if not response.is_ok():
             self.logger.warning(
-                "Hub A1 optional telemetry summary: endpoint=%s status=%s data=%s",
+                "Hub A1 optional telemetry summary: endpoint=%s target=%s status=%s data=%s",
                 label,
+                serial_summary,
                 describe_hub_a1_lookup_response(response),
                 summarize_payload_values(response.data),
             )
             return default
         data = response.data if response.data is not None else default
         self.logger.warning(
-            "Hub A1 optional telemetry summary: endpoint=%s status=%s data=%s",
+            "Hub A1 optional telemetry summary: endpoint=%s target=%s status=%s data=%s",
             label,
+            serial_summary,
             describe_hub_a1_lookup_response(response),
             summarize_payload_values(data),
         )

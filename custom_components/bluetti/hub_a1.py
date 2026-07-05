@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime
 from typing import Any
@@ -261,6 +262,49 @@ def summarize_payload_values(payload: Any, *, limit: int = 6) -> str:
         ]
     )
     return " ".join(parts)
+
+
+def summarize_serial_identity(value: Any) -> str:
+    """Return a stable, non-reversible serial summary for log correlation."""
+    if value is None:
+        return "empty"
+    value_text = str(value).strip()
+    if not value_text:
+        return "empty"
+    digest = hashlib.sha256(value_text.encode("utf-8")).hexdigest()[:16]
+    return f"len={len(value_text)} sha256={digest}"
+
+
+def summarize_app_home_device_serials(
+    target_serial: Any,
+    home_devices: list[dict[str, Any]] | None,
+    *,
+    limit: int = 6,
+) -> str:
+    """Summarize app home-device serials without exposing identifiers."""
+    target_text = _normalize_serial_text(target_serial)
+    device_count = 0
+    matches = 0
+    samples: list[str] = []
+
+    for item in home_devices or []:
+        if not isinstance(item, dict):
+            continue
+        device_count += 1
+        item_serial = _payload_serial_value(item)
+        item_serial_text = _normalize_serial_text(item_serial)
+        if target_text and item_serial_text == target_text:
+            matches += 1
+        if len(samples) < limit:
+            model = _redact_identifier_text(str(item.get("model") or "unknown"))
+            identity = summarize_serial_identity(item_serial) if item_serial_text else "missing"
+            samples.append(f"{model}:{identity}")
+
+    return (
+        f"target={summarize_serial_identity(target_serial)} "
+        f"home_devices={device_count} matches={matches} "
+        f"samples={','.join(samples) if samples else 'none'}"
+    )
 
 
 def app_device_telemetry_score(app_device: dict[str, Any] | None) -> int:
@@ -626,6 +670,18 @@ def _payload_row_prefix(item: Any, index: int, prefix: str) -> str:
                 break
     row_name = label or f"row{index}"
     return f"{prefix}.{row_name}" if prefix else row_name
+
+
+def _payload_serial_value(payload: dict[str, Any]) -> Any:
+    for key in ("sn", "deviceSn", "deviceSN", "boardSn", "mesSn", "serial"):
+        value = payload.get(key)
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _normalize_serial_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def _is_identifier_key(key: str) -> bool:

@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.12`
+- Latest release tag: `v1.1.13`
 - Integration domain: `bluetti`
-- Integration version: `1.1.12`
+- Integration version: `1.1.13`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -123,3 +123,12 @@ because zero-valued optional realtime/lastAlive payloads masked the non-zero
 direct HA1 `deviceRemoteSearch` fields captured earlier. `v1.1.12` keeps the
 verified direct HA1 app lookup path and lets non-zero direct HA1 values win over
 zero optional telemetry placeholders while preserving non-zero realtime priority.
+
+## v1.1.13 Patch
+
+The next Home Assistant log showed HA1 direct app lookup repeatedly returning
+`The device does not exist`, while optional HA1 endpoints stayed null/zero and
+non-HA1 app telemetry continued refreshing. `v1.1.13` adds serial-safe target
+hash/length diagnostics to app direct lookup, HA1 optional telemetry, and app
+home-device serial matching so the next runtime log can prove whether Home
+Assistant is querying the same Hub A1 serial that succeeded in capture.
