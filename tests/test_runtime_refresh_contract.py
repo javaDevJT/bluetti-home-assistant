@@ -15,6 +15,7 @@ class RuntimeRefreshContractTests(unittest.TestCase):
         self.assertIn("timedelta(seconds=60)", init_source)
         self.assertIn("refresh_unsub", init_source)
         self.assertIn("await device.async_update()", init_source)
+        self.assertIn("BLUETTI periodic runtime state summary", init_source)
 
     def test_unload_cancels_periodic_device_refresh(self):
         init_source = (ROOT / "custom_components" / "bluetti" / "__init__.py").read_text(

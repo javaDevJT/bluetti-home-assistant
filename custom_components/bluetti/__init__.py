@@ -187,6 +187,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: BluettiConfigEntry) -> b
                     device.model,
                     exc.__class__.__name__,
                 )
+                continue
+            __LOGGER__.warning(
+                "BLUETTI periodic runtime state summary: model=%s %s",
+                device.model,
+                summarize_state_values(device.states),
+            )
 
     refresh_unsub = async_track_time_interval(
         hass,

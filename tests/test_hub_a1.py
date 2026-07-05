@@ -1,6 +1,7 @@
 import importlib.util
 import pathlib
 import unittest
+from datetime import datetime
 
 
 MODULE_PATH = pathlib.Path(__file__).resolve().parents[1] / "custom_components" / "bluetti" / "hub_a1.py"
@@ -214,6 +215,52 @@ class HubA1Tests(unittest.TestCase):
         )
 
         self.assertEqual(selected, {})
+
+    def test_select_hub_a1_related_app_device_ignores_stale_last_alive_payloads(self):
+        selected = self.hub_a1.select_hub_a1_related_app_device(
+            [
+                {
+                    "sn": TEST_APEX_SERIAL,
+                    "model": "EL100V2",
+                    "lastAlive": {
+                        "allFieldIsNull": False,
+                        "timestamp": "2026-07-04 13:00:00",
+                        "batterySoc": "89",
+                        "powerAcOut": "128",
+                    },
+                }
+            ],
+            now=datetime(2026, 7, 4, 14, 0, 0),
+            max_age_seconds=900,
+        )
+
+        self.assertEqual(selected, {})
+
+    def test_build_related_hub_a1_fallback_omits_apex_battery_fields(self):
+        product = self.hub_a1.build_related_hub_a1_fallback_product_data(
+            TEST_HUB_SERIAL,
+            {
+                "model": "EL100V2",
+                "networkConnect": 1,
+                "sessionState": "Online",
+                "lastAlive": {
+                    "batterySoc": "89",
+                    "batterySoh": "100",
+                    "batteryVoltage": "533",
+                    "powerAcOut": "128",
+                    "powerPvIn": "76",
+                    "acSwitch": "1",
+                },
+            },
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertNotIn("HubA1BatterySoc", states_by_code)
+        self.assertNotIn("HubA1BatterySoh", states_by_code)
+        self.assertNotIn("HubA1BatteryVoltage", states_by_code)
+        self.assertEqual(states_by_code["HubA1AcPowerOut"]["fnValue"], "128")
+        self.assertEqual(states_by_code["HubA1PvPowerIn"]["fnValue"], "76")
+        self.assertEqual(states_by_code["HubA1AcSwitch"]["fnValue"], "1")
 
     def test_build_app_device_state_overrides_returns_empty_without_app_payload(self):
         self.assertEqual(self.hub_a1.build_app_device_state_overrides({}), [])

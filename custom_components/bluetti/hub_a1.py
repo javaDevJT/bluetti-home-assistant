@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 
 
@@ -47,6 +48,18 @@ TELEMETRY_KEYS = {
     "pvtogridpower",
     "pvtotalenergy",
     "voltage",
+}
+
+RELATED_HUB_A1_FALLBACK_KEYS = {
+    "acSwitch",
+    "dcSwitch",
+    "dcTotalEnergy",
+    "gridSwitch",
+    "powerAcOut",
+    "powerDcOut",
+    "powerGridIn",
+    "powerPvIn",
+    "timestamp",
 }
 
 
@@ -281,11 +294,22 @@ def select_preferred_app_device_payload(
     return direct_device
 
 
-def select_hub_a1_related_app_device(home_devices: list[dict[str, Any]] | None) -> dict[str, Any]:
+def select_hub_a1_related_app_device(
+    home_devices: list[dict[str, Any]] | None,
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int | None = None,
+) -> dict[str, Any]:
     """Select an Apex-family app device whose telemetry can represent a Hub A1."""
     candidates = []
     for item in home_devices or []:
         if not isinstance(item, dict):
+            continue
+        if not _is_recent_app_device_telemetry(
+            item,
+            now=now,
+            max_age_seconds=max_age_seconds,
+        ):
             continue
         telemetry_score = app_device_telemetry_score(item)
         model_score = _hub_related_model_score(item.get("model"))
@@ -294,6 +318,35 @@ def select_hub_a1_related_app_device(home_devices: list[dict[str, Any]] | None) 
     if not candidates:
         return {}
     return max(candidates, key=lambda candidate: (candidate[0], candidate[1]))[2]
+
+
+def build_related_hub_a1_fallback_product_data(
+    serial: str,
+    related_app_device: dict[str, Any],
+) -> dict[str, Any]:
+    """Build HA1 fallback states from related app telemetry without battery identity."""
+    related_last_alive = related_app_device.get("lastAlive")
+    if not isinstance(related_last_alive, dict):
+        related_last_alive = {}
+    fallback_last_alive = {
+        key: value
+        for key, value in related_last_alive.items()
+        if key in RELATED_HUB_A1_FALLBACK_KEYS
+    }
+    fallback_app_device = {
+        "model": HUB_A1_MODEL,
+        "networkConnect": related_app_device.get("networkConnect"),
+        "sessionState": related_app_device.get("sessionState"),
+        "powerAcOut": related_app_device.get("powerAcOut"),
+        "powerDcOut": related_app_device.get("powerDcOut"),
+        "powerGridIn": related_app_device.get("powerGridIn"),
+        "powerPvIn": related_app_device.get("powerPvIn"),
+    }
+    return build_hub_a1_product_data(
+        serial,
+        app_device=fallback_app_device,
+        last_alive=fallback_last_alive,
+    )
 
 
 def build_hub_a1_state_list(
@@ -467,6 +520,38 @@ def _telemetry_payload_score(payload: Any) -> int:
 
 def _is_all_field_null(payload: dict[str, Any]) -> bool:
     return str(payload.get("allFieldIsNull")).strip().lower() == "true"
+
+
+def _is_recent_app_device_telemetry(
+    app_device: dict[str, Any],
+    *,
+    now: datetime | None,
+    max_age_seconds: int | None,
+) -> bool:
+    if max_age_seconds is None:
+        return True
+    last_alive = app_device.get("lastAlive")
+    if not isinstance(last_alive, dict):
+        return False
+    timestamp = _parse_bluetti_timestamp(last_alive.get("timestamp"))
+    if timestamp is None:
+        return False
+    if now is None:
+        now = datetime.now()
+    age_seconds = (now - timestamp).total_seconds()
+    return age_seconds <= max_age_seconds
+
+
+def _parse_bluetti_timestamp(value: Any) -> datetime | None:
+    if value is None or value == "":
+        return None
+    value_text = str(value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(value_text[:19], fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def _hub_related_model_score(model: Any) -> int:

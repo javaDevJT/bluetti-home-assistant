@@ -17,9 +17,9 @@ fork/release.
 
 - Repository: `https://github.com/javaDevJT/bluetti-home-assistant`
 - HACS type: Integration
-- Latest release tag: `v1.1.7`
+- Latest release tag: `v1.1.8`
 - Integration domain: `bluetti`
-- Integration version: `1.1.7`
+- Integration version: `1.1.8`
 
 No zip-release artifact is required because the repository uses the standard
 `custom_components/bluetti` layout. HACS can use the GitHub release source
@@ -83,3 +83,11 @@ The `v1.1.6` fallback could populate HA1 values but leave them static because
 runtime updates still depended on websocket events. `v1.1.7` registers a
 60-second Home Assistant interval refresh for selected devices and cancels it
 on unload/remove, so HA1/Apex fallback telemetry is re-read after startup.
+
+## v1.1.8 Patch
+
+The `v1.1.7` refresh path showed related Apex-family fallback telemetry can
+still be stale and can expose battery values that should not be labeled as HA1
+SOC/SOH/voltage. `v1.1.8` ignores stale related fallback rows, keeps related
+fallback limited to power/switch fields, omits related fallback battery fields
+from HA1, and logs successful periodic runtime summaries for refresh proof.

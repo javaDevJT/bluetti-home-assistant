@@ -9,6 +9,7 @@ from ..hub_a1 import (
     HubA1LookupError,
     build_app_device_state_overrides,
     build_hub_a1_product_data,
+    build_related_hub_a1_fallback_product_data,
     describe_hub_a1_lookup_response,
     has_meaningful_state_values,
     has_hub_a1_telemetry,
@@ -243,7 +244,8 @@ class ProductClient(Bluetti):
         )
         if not has_meaningful_state_values(product_data["stateList"]):
             related_app_device = select_hub_a1_related_app_device(
-                await self._get_app_home_devices_payload()
+                await self._get_app_home_devices_payload(),
+                max_age_seconds=900,
             )
             related_last_alive = (
                 related_app_device.get("lastAlive")
@@ -256,21 +258,9 @@ class ProductClient(Bluetti):
                     summarize_payload_values(related_app_device),
                     summarize_payload_values(related_last_alive),
                 )
-                fallback_app_device = {
-                    "model": "HA1",
-                    "name": app_device.get("name"),
-                    "networkConnect": related_app_device.get("networkConnect"),
-                    "sessionState": related_app_device.get("sessionState"),
-                    "batSOC": related_app_device.get("batSOC"),
-                    "powerAcOut": related_app_device.get("powerAcOut"),
-                    "powerDcOut": related_app_device.get("powerDcOut"),
-                    "powerGridIn": related_app_device.get("powerGridIn"),
-                    "powerPvIn": related_app_device.get("powerPvIn"),
-                }
-                product_data = build_hub_a1_product_data(
+                product_data = build_related_hub_a1_fallback_product_data(
                     device_sn,
-                    app_device=fallback_app_device,
-                    last_alive=related_last_alive,
+                    related_app_device,
                 )
         self.logger.warning(
             "Hub A1 built state summary: %s",
