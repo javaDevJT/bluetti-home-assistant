@@ -291,6 +291,24 @@ class HubA1Tests(unittest.TestCase):
         self.assertEqual(states_by_code["SetCtrlAc"]["fnValue"], "1")
         self.assertEqual(states_by_code["SetCtrlDc"]["fnValue"], "0")
 
+    def test_build_app_device_state_overrides_scales_pack_totals_as_centi_kwh(self):
+        states = self.hub_a1.build_app_device_state_overrides(
+            {
+                "model": "FP",
+                "sessionState": "Online",
+                "lastAlive": {
+                    "packTotalChgEnergy": "2344.0",
+                    "packTotalDsgEnergy": "2230.0",
+                },
+            }
+        )
+
+        states_by_code = {state["fnCode"]: state for state in states}
+        self.assertEqual(states_by_code["PackTotalChargeEnergy"]["fnValue"], "23.44")
+        self.assertEqual(states_by_code["PackTotalChargeEnergy"]["sensorInfo"]["unit"], "kWh")
+        self.assertEqual(states_by_code["PackTotalDischargeEnergy"]["fnValue"], "22.30")
+        self.assertEqual(states_by_code["PackTotalDischargeEnergy"]["sensorInfo"]["unit"], "kWh")
+
     def test_select_preferred_app_device_payload_uses_home_last_alive_over_direct_zeros(self):
         direct = {
             "sn": TEST_APEX_SERIAL,

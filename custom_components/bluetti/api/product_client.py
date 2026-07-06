@@ -85,7 +85,13 @@ class ProductClient(Bluetti):
     async def get_app_device_state_overrides(self, device_sn: str) -> list[dict]:
         """Get app-side state updates for devices omitted or stale in HA APIs."""
         app_device = await self._get_app_device_payload(device_sn)
-        return build_app_device_state_overrides(app_device)
+        app_states = build_app_device_state_overrides(app_device)
+        self.logger.warning(
+            "BLUETTI app state override summary: target=%s states=%s",
+            summarize_serial_identity(device_sn),
+            summarize_state_values(app_states),
+        )
+        return app_states
 
     async def _get_app_device_payload(self, device_sn: str) -> dict:
         direct_device = {}

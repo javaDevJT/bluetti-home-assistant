@@ -171,3 +171,12 @@ exposes one HA1 battery total charge energy sensor in kWh from
 entities, removes the non-working HA1 meter-total energy sensor, and adds
 `powerInvTotal` to the HA1 field-source diagnostic as `InverterTotalPower` for
 future sign/meaning checks.
+
+## v1.1.18 Patch
+
+The `v1.1.17` runtime log showed FridgePower/app-side pack total values such as
+`2344.0` being exposed through the generic app override path as raw kWh. The
+earlier HA1 long-run evidence showed these pack counters are centi-kWh values,
+so `v1.1.18` applies the same `/100` kWh scaling to non-HA1 app override pack
+charge/discharge totals. It also logs a per-device app state override summary so
+future FridgePower zero-value reports can be traced at the app override boundary.
