@@ -190,9 +190,9 @@ class HubA1Tests(unittest.TestCase):
 
         states_by_code = {state["fnCode"]: state for state in product["stateList"]}
         self.assertEqual(states_by_code["HubA1BatteryChargePower"]["fnValue"], "42")
-        self.assertEqual(states_by_code["HubA1MeterTotalEnergy"]["fnValue"], "13.7")
+        self.assertNotIn("HubA1MeterTotalEnergy", states_by_code)
 
-    def test_build_hub_a1_product_data_exposes_last_alive_pack_energy(self):
+    def test_build_hub_a1_product_data_exposes_mirrored_pack_total_once_as_charge_energy(self):
         product = self.hub_a1.build_hub_a1_product_data(
             TEST_HUB_SERIAL,
             app_device={"sn": TEST_HUB_SERIAL, "name": "Garage Hub", "model": "HA1"},
@@ -203,10 +203,24 @@ class HubA1Tests(unittest.TestCase):
         )
 
         states_by_code = {state["fnCode"]: state for state in product["stateList"]}
-        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["fnValue"], "52975.0")
-        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["sensorInfo"]["unit"], "Wh")
-        self.assertEqual(states_by_code["HubA1PackTotalDischargeEnergy"]["fnValue"], "52975.0")
-        self.assertEqual(states_by_code["HubA1PackTotalDischargeEnergy"]["sensorInfo"]["unit"], "Wh")
+        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["fnValue"], "529.75")
+        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["fnName"], "Battery Total Charge Energy")
+        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["sensorInfo"]["unit"], "kWh")
+        self.assertNotIn("HubA1PackTotalDischargeEnergy", states_by_code)
+
+    def test_build_hub_a1_product_data_ignores_discharge_pack_total_even_when_divergent(self):
+        product = self.hub_a1.build_hub_a1_product_data(
+            TEST_HUB_SERIAL,
+            app_device={"sn": TEST_HUB_SERIAL, "name": "Garage Hub", "model": "HA1"},
+            last_alive={
+                "packTotalChgEnergy": "52975.0",
+                "packTotalDsgEnergy": "52970.0",
+            },
+        )
+
+        states_by_code = {state["fnCode"]: state for state in product["stateList"]}
+        self.assertEqual(states_by_code["HubA1PackTotalChargeEnergy"]["fnValue"], "529.75")
+        self.assertNotIn("HubA1PackTotalDischargeEnergy", states_by_code)
 
     def test_build_hub_a1_product_data_keeps_detail_rows_with_nonzero_readings(self):
         product = self.hub_a1.build_hub_a1_product_data(
@@ -229,11 +243,19 @@ class HubA1Tests(unittest.TestCase):
         summary = self.hub_a1.summarize_hub_a1_field_sources(
             app_device={"powerGridIn": "0"},
             realtime={"powerGridIn": "0"},
-            last_alive={"powerFeedBack": "2452"},
+            last_alive={
+                "powerFeedBack": "2452",
+                "powerInvTotal": "-485",
+                "packTotalChgEnergy": "55029.0",
+                "packTotalDsgEnergy": "55029.0",
+            },
         )
 
         self.assertIn("GridPowerIn=lastAlive.powerFeedBack:2452", summary)
+        self.assertIn("InverterTotalPower=lastAlive.powerInvTotal:-485", summary)
         self.assertIn("BatterySoc=none", summary)
+        self.assertIn("BatteryTotalChargeEnergy=lastAlive.packTotalChgEnergy:55029.0", summary)
+        self.assertIn("PackTotalDischargeEnergy=ignored_displayed_as_charge:lastAlive.packTotalDsgEnergy:55029.0", summary)
 
     def test_build_app_device_state_overrides_prefers_last_alive_for_apex_zero_fields(self):
         states = self.hub_a1.build_app_device_state_overrides(

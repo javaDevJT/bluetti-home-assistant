@@ -338,6 +338,12 @@ def summarize_hub_a1_field_sources(
             ],
         ),
         (
+            "InverterTotalPower",
+            [
+                ("lastAlive.powerInvTotal", last_alive.get("powerInvTotal")),
+            ],
+        ),
+        (
             "PvPowerIn",
             [
                 ("realtime.powerPvIn", realtime.get("powerPvIn")),
@@ -366,17 +372,24 @@ def summarize_hub_a1_field_sources(
                 ("lastAlive.meterTotalEnergy", last_alive.get("meterTotalEnergy")),
             ],
         ),
-        (
-            "PackTotalChargeEnergy",
-            [("lastAlive.packTotalChgEnergy", last_alive.get("packTotalChgEnergy"))],
-        ),
-        (
-            "PackTotalDischargeEnergy",
-            [("lastAlive.packTotalDsgEnergy", last_alive.get("packTotalDsgEnergy"))],
-        ),
     ]
 
-    return ",".join(_selected_source_summary(name, sources) for name, sources in fields)
+    summaries = [_selected_source_summary(name, sources) for name, sources in fields]
+    summaries.append(
+        _selected_source_summary(
+            "BatteryTotalChargeEnergy",
+            [("lastAlive.packTotalChgEnergy", last_alive.get("packTotalChgEnergy"))],
+        )
+    )
+    summaries.append(
+        _ignored_source_summary(
+            "PackTotalDischargeEnergy",
+            "lastAlive.packTotalDsgEnergy",
+            last_alive.get("packTotalDsgEnergy"),
+            "ignored_displayed_as_charge",
+        )
+    )
+    return ",".join(summaries)
 
 
 def _selected_source_summary(field_name: str, sources: list[tuple[str, Any]]) -> str:
@@ -394,6 +407,18 @@ def _selected_source_summary(field_name: str, sources: list[tuple[str, Any]]) ->
     label, value = first_present
     safe_value = _redact_identifier_text(str(value))
     return f"{field_name}=zero:{label}:{safe_value}"
+
+
+def _ignored_source_summary(
+    field_name: str,
+    label: str,
+    value: Any,
+    reason: str,
+) -> str:
+    if value is None or value == "":
+        return f"{field_name}=none"
+    safe_value = _redact_identifier_text(str(value))
+    return f"{field_name}={reason}:{label}:{safe_value}"
 
 
 def summarize_serial_identity(value: Any) -> str:
@@ -566,6 +591,7 @@ def build_hub_a1_state_list(
     pv_details = pv_details or []
     load_details = load_details or []
     grid_details = grid_details or []
+    battery_total_charge_energy = _centi_kwh_value(last_alive.get("packTotalChgEnergy"))
 
     states = [
         _binary_sensor("onLine", "Online", _online_value(app_device, last_alive)),
@@ -580,10 +606,8 @@ def build_hub_a1_state_list(
         _power_sensor("HubA1GridPowerIn", "Grid Input Power", _first_nonzero(realtime.get("powerGridIn"), last_alive.get("powerGridIn"), last_alive.get("powerFeedBack"), app_device.get("powerGridIn"))),
         _power_sensor("HubA1PvPowerIn", "PV Input Power", _first_nonzero(realtime.get("powerPvIn"), last_alive.get("powerPvIn"), app_device.get("powerPvIn"))),
         _power_sensor("HubA1BatteryChargePower", "Battery Charge Power", _first_nonzero(realtime.get("powerBatteryCharge"), last_alive.get("powerBatteryCharge"))),
-        _energy_sensor("HubA1MeterTotalEnergy", "Meter Total Energy", _first_nonzero(realtime.get("meterTotalEnergy"), last_alive.get("meterTotalEnergy"))),
         _energy_sensor("HubA1DcTotalEnergy", "DC Total Energy", last_alive.get("dcTotalEnergy")),
-        _energy_sensor("HubA1PackTotalChargeEnergy", "Pack Total Charge Energy", last_alive.get("packTotalChgEnergy"), unit="Wh"),
-        _energy_sensor("HubA1PackTotalDischargeEnergy", "Pack Total Discharge Energy", last_alive.get("packTotalDsgEnergy"), unit="Wh"),
+        _energy_sensor("HubA1PackTotalChargeEnergy", "Battery Total Charge Energy", battery_total_charge_energy),
         _binary_sensor("HubA1AcSwitch", "AC Switch", last_alive.get("acSwitch")),
         _binary_sensor("HubA1DcSwitch", "DC Switch", last_alive.get("dcSwitch")),
         _binary_sensor("HubA1GridSwitch", "Grid Switch", last_alive.get("gridSwitch")),
@@ -718,6 +742,16 @@ def _is_zero_value(value: Any) -> bool:
         return float(value_text) == 0
     except ValueError:
         return False
+
+
+def _centi_kwh_value(value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    try:
+        scaled_value = float(str(value).strip()) / 100
+    except ValueError:
+        return None
+    return f"{scaled_value:.2f}"
 
 
 def _has_nonzero_detail_state(row: dict[str, Any], *, include_status: bool) -> bool:

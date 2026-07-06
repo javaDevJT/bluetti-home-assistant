@@ -159,3 +159,15 @@ placeholders for charge power and meter energy, adds HA1 pack total
 charge/discharge energy in Wh, suppresses label-only all-zero detail rows on
 fresh setup, and logs a targeted HA1 field-source summary for future runtime
 checks.
+
+## v1.1.17 Patch
+
+The `v1.1.16` runtime logs and earlier raw HA1 capture showed
+`packTotalChgEnergy` and `packTotalDsgEnergy` mirrored exactly even at very
+different SOC levels. The longer overnight run showed the raw counter delta
+tracks the charge window when interpreted as 0.01 kWh units, so `v1.1.17`
+exposes one HA1 battery total charge energy sensor in kWh from
+`packTotalChgEnergy`, ignores the mirrored discharge key to avoid duplicate
+entities, removes the non-working HA1 meter-total energy sensor, and adds
+`powerInvTotal` to the HA1 field-source diagnostic as `InverterTotalPower` for
+future sign/meaning checks.
