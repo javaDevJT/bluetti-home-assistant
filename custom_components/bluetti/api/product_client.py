@@ -5,7 +5,29 @@ import aiohttp
 from .bluetti import Bluetti
 from .unify_response import UnifyResponse
 from ..const import Method
+from ..hub_a1 import (
+    HubA1LookupError,
+    build_app_device_state_overrides,
+    build_hub_a1_product_data,
+    build_related_hub_a1_fallback_product_data,
+    describe_hub_a1_lookup_response,
+    has_meaningful_state_values,
+    has_hub_a1_telemetry,
+    select_hub_a1_related_app_device,
+    select_preferred_app_device_payload,
+    summarize_app_home_device_serials,
+    summarize_hub_a1_field_sources,
+    summarize_payload_values,
+    summarize_serial_identity,
+    summarize_state_values,
+)
 from ..model.product import UserProduct
+
+
+def _last_alive_payload(payload: dict) -> dict:
+    """Return a payload's lastAlive mapping when present."""
+    last_alive = payload.get("lastAlive") if isinstance(payload, dict) else None
+    return last_alive if isinstance(last_alive, dict) else {}
 
 
 class ProductClient(Bluetti):
@@ -48,6 +70,314 @@ class ProductClient(Bluetti):
             "/api/bluiotdata/ha/v1/deviceStates",
             params={'sns': sns}
         )
+
+    async def get_app_device_by_sn(self, device_sn: str) -> UnifyResponse[dict]:
+        """Look up a BLUETTI app-side device by serial number."""
+        return await self._request(
+            dict,
+            Method.GET,
+            "/api/blusmartprod/device/basic/v1/deviceRemoteSearch",
+            params={"deviceSn": device_sn},
+        )
+
+    async def get_app_home_devices(self) -> UnifyResponse[list[dict]]:
+        """Get app-side home device records."""
+        return await self._request(
+            list[dict],
+            Method.GET,
+            "/api/blusmartprod/device/group/v1/homeDevices",
+        )
+
+    async def get_app_device_state_overrides(self, device_sn: str) -> list[dict]:
+        """Get app-side state updates for devices omitted or stale in HA APIs."""
+        app_device = await self._get_app_device_payload(device_sn)
+        app_states = build_app_device_state_overrides(app_device)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(
+                "BLUETTI app state override summary: target=%s states=%s",
+                summarize_serial_identity(device_sn),
+                summarize_state_values(app_states),
+            )
+        return app_states
+
+    async def _get_app_device_payload(self, device_sn: str) -> dict:
+        direct_device = {}
+        serial_summary = summarize_serial_identity(device_sn)
+        debug_logging = self.logger.isEnabledFor(logging.DEBUG)
+        try:
+            response = await self.get_app_device_by_sn(device_sn)
+        except Exception as exc:
+            if debug_logging:
+                self.logger.debug(
+                    "BLUETTI app direct lookup summary: target=%s error=%s",
+                    serial_summary,
+                    exc.__class__.__name__,
+                )
+        else:
+            if response.has_data() and isinstance(response.data, dict) and response.data:
+                direct_device = response.data
+                if debug_logging:
+                    self.logger.debug(
+                        "BLUETTI app direct lookup summary: target=%s status=%s data=%s lastAlive=%s",
+                        serial_summary,
+                        describe_hub_a1_lookup_response(response),
+                        summarize_payload_values(response.data),
+                        summarize_payload_values(_last_alive_payload(response.data)),
+                    )
+            else:
+                if debug_logging:
+                    self.logger.debug(
+                        "BLUETTI app direct lookup summary: target=%s status=%s data=%s",
+                        serial_summary,
+                        describe_hub_a1_lookup_response(response),
+                        summarize_payload_values(response.data),
+                    )
+
+        home_devices = await self._get_app_home_devices_payload()
+        selected = select_preferred_app_device_payload(
+            device_sn,
+            direct_device,
+            home_devices,
+            max_age_seconds=900,
+        )
+        if selected and selected is not direct_device:
+            if debug_logging:
+                    self.logger.debug(
+                        "BLUETTI app selected home-device payload: data=%s lastAlive=%s",
+                        summarize_payload_values(selected),
+                        summarize_payload_values(_last_alive_payload(selected)),
+                    )
+        return selected
+
+    async def _get_app_home_devices_payload(self) -> list[dict]:
+        debug_logging = self.logger.isEnabledFor(logging.DEBUG)
+        try:
+            response = await self.get_app_home_devices()
+        except Exception as exc:
+            if debug_logging:
+                self.logger.debug("BLUETTI app home devices summary: error=%s", exc.__class__.__name__)
+            return []
+
+        if not response.is_ok() or not isinstance(response.data, list):
+            if debug_logging:
+                self.logger.debug(
+                    "BLUETTI app home devices summary: status=%s data=%s",
+                    describe_hub_a1_lookup_response(response),
+                    summarize_payload_values(response.data),
+                )
+            return []
+
+        if debug_logging:
+            self.logger.debug(
+                "BLUETTI app home devices summary: status=%s data=%s",
+                describe_hub_a1_lookup_response(response),
+                summarize_payload_values(response.data),
+            )
+        return response.data
+
+    async def get_aecc_realtime_data(self, device_sn: str) -> UnifyResponse[dict]:
+        """Get Hub A1 realtime AECC telemetry."""
+        return await self._request(
+            dict,
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceRealTimeData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_device_last_alive(self, device_sn: str) -> UnifyResponse[dict]:
+        """Get Hub A1 last-alive realtime telemetry."""
+        return await self._request(
+            dict,
+            Method.POST,
+            "/api/bluiotdata/realtime/v1/getDeviceLastAlive",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_battery_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 battery detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceBatteryDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_pv_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 PV detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDevicePvDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_load_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 load detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceLoadDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_aecc_grid_detail_data(self, device_sn: str) -> UnifyResponse[list[dict]]:
+        """Get Hub A1 grid detail telemetry."""
+        return await self._request(
+            list[dict],
+            Method.POST,
+            "/api/bluiotdata/aecc/v1/getDeviceGridDetailData",
+            body={"deviceSn": device_sn},
+        )
+
+    async def get_hub_a1_product(self, device_sn: str) -> UserProduct:
+        """Build a UserProduct-shaped Hub A1 object from read-only app APIs."""
+        app_device = {}
+        app_lookup_status = "not requested"
+        serial_summary = summarize_serial_identity(device_sn)
+        debug_logging = self.logger.isEnabledFor(logging.DEBUG)
+
+        try:
+            app_device_response = await self.get_app_device_by_sn(device_sn)
+        except Exception as exc:
+            app_lookup_status = exc.__class__.__name__
+        else:
+            app_lookup_status = describe_hub_a1_lookup_response(app_device_response)
+            if (
+                app_device_response.has_data()
+                and isinstance(app_device_response.data, dict)
+                and app_device_response.data
+            ):
+                app_device = app_device_response.data
+
+        if debug_logging:
+            self.logger.debug(
+                "Hub A1 app lookup summary: target=%s status=%s data=%s lastAlive=%s",
+                serial_summary,
+                app_lookup_status,
+                summarize_payload_values(app_device),
+                summarize_payload_values(_last_alive_payload(app_device)),
+            )
+
+        realtime = await self._optional_response_data(
+            "realtime", self.get_aecc_realtime_data, device_sn, {}
+        )
+        last_alive = await self._optional_response_data(
+            "lastAlive", self.get_device_last_alive, device_sn, {}
+        )
+        battery_details = await self._optional_response_data(
+            "batteryDetails", self.get_aecc_battery_detail_data, device_sn, []
+        )
+        pv_details = await self._optional_response_data(
+            "pvDetails", self.get_aecc_pv_detail_data, device_sn, []
+        )
+        load_details = await self._optional_response_data(
+            "loadDetails", self.get_aecc_load_detail_data, device_sn, []
+        )
+        grid_details = await self._optional_response_data(
+            "gridDetails", self.get_aecc_grid_detail_data, device_sn, []
+        )
+        if debug_logging:
+            self.logger.debug(
+                "Hub A1 selected field source summary: target=%s %s",
+                serial_summary,
+                summarize_hub_a1_field_sources(
+                    app_device=app_device,
+                    realtime=realtime,
+                    last_alive=last_alive,
+                    battery_details=battery_details,
+                ),
+            )
+
+        if not app_device and not has_hub_a1_telemetry(
+            realtime=realtime,
+            last_alive=last_alive,
+            battery_details=battery_details,
+            pv_details=pv_details,
+            load_details=load_details,
+            grid_details=grid_details,
+        ):
+            raise HubA1LookupError(
+                f"Hub A1 lookup returned no app device and no telemetry fallback ({app_lookup_status})"
+            )
+
+        product_data = build_hub_a1_product_data(
+            device_sn,
+            app_device=app_device,
+            realtime=realtime,
+            last_alive=last_alive,
+            battery_details=battery_details,
+            pv_details=pv_details,
+            load_details=load_details,
+            grid_details=grid_details,
+        )
+        if not has_meaningful_state_values(product_data["stateList"]):
+            home_devices = await self._get_app_home_devices_payload()
+            if debug_logging:
+                self.logger.debug(
+                    "Hub A1 app home serial summary: %s",
+                    summarize_app_home_device_serials(device_sn, home_devices),
+                )
+            related_app_device = select_hub_a1_related_app_device(
+                home_devices,
+                max_age_seconds=900,
+            )
+            related_last_alive = (
+                related_app_device.get("lastAlive")
+                if isinstance(related_app_device.get("lastAlive"), dict)
+                else {}
+            )
+            if related_app_device and related_last_alive:
+                if debug_logging:
+                    self.logger.debug(
+                        "Hub A1 related app telemetry fallback summary: data=%s lastAlive=%s",
+                        summarize_payload_values(related_app_device),
+                        summarize_payload_values(related_last_alive),
+                    )
+                product_data = build_related_hub_a1_fallback_product_data(
+                    device_sn,
+                    related_app_device,
+                )
+        if debug_logging:
+            self.logger.debug(
+                "Hub A1 built state summary: %s",
+                summarize_state_values(product_data["stateList"]),
+            )
+        return UserProduct.model_validate(product_data)
+
+    async def _optional_response_data(self, label: str, request, device_sn: str, default):
+        serial_summary = summarize_serial_identity(device_sn)
+        debug_logging = self.logger.isEnabledFor(logging.DEBUG)
+        try:
+            response = await request(device_sn)
+        except Exception as exc:
+            if debug_logging:
+                self.logger.debug(
+                    "Hub A1 optional telemetry summary: endpoint=%s target=%s error=%s",
+                    label,
+                    serial_summary,
+                    exc.__class__.__name__,
+                )
+            return default
+        if not response.is_ok():
+            if debug_logging:
+                self.logger.debug(
+                    "Hub A1 optional telemetry summary: endpoint=%s target=%s status=%s data=%s",
+                    label,
+                    serial_summary,
+                    describe_hub_a1_lookup_response(response),
+                    summarize_payload_values(response.data),
+                )
+            return default
+        data = response.data if response.data is not None else default
+        if debug_logging:
+            self.logger.debug(
+                "Hub A1 optional telemetry summary: endpoint=%s target=%s status=%s data=%s",
+                label,
+                serial_summary,
+                describe_hub_a1_lookup_response(response),
+                summarize_payload_values(data),
+            )
+        return data
 
     async def control_device(self, payload: str = None):
         """

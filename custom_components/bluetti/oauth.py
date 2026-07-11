@@ -16,9 +16,30 @@ from aiohttp import ClientSession
 import voluptuous as vol
 
 from .api.product_client import ProductClient
-from .const import DOMAIN, INTEGRATION_NAME,EVENT_TOKEN_EXPIRED,NOTIFY_ID_TOKEN_EXPIRED
+from .const import CONF_HUB_A1_SERIALS, DOMAIN, INTEGRATION_NAME,EVENT_TOKEN_EXPIRED,NOTIFY_ID_TOKEN_EXPIRED
+from .hub_a1 import HubA1LookupError, parse_hub_a1_serials
 
 __LOGGER__ = logging.getLogger(__name__)
+
+
+def _dedupe(values):
+    result = []
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+    return result
+
+
+def _serialize_products(products):
+    serialized = []
+    for product in products:
+        if hasattr(product, "model_dump"):
+            serialized.append(product.model_dump())
+        elif hasattr(product, "__dict__"):
+            serialized.append(product.__dict__)
+        else:
+            serialized.append(product)
+    return serialized
 
 
 class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, domain=DOMAIN):
@@ -41,7 +62,40 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
         """Let user select devices after OAuth2 login."""
         if user_input is not None:
             # print(user_input)
-            await self._product_client.bind_devices({"bindSnList": user_input['devices']})
+            selected_devices = list(user_input.get("devices", []))
+            hub_a1_serials = parse_hub_a1_serials(user_input.get(CONF_HUB_A1_SERIALS))
+
+            if not selected_devices and not hub_a1_serials:
+                return self.async_show_form(
+                    step_id="select_devices",
+                    data_schema=self._select_devices_schema(user_input.get(CONF_HUB_A1_SERIALS, "")),
+                    errors={"base": "no_devices_available"},
+                )
+
+            hub_a1_products = []
+            try:
+                for serial in hub_a1_serials:
+                    hub_a1_products.append(await self._product_client.get_hub_a1_product(serial))
+            except HubA1LookupError as exc:
+                __LOGGER__.warning("Failed to load Hub A1 serial through app API: %s", exc)
+                return self.async_show_form(
+                    step_id="select_devices",
+                    data_schema=self._select_devices_schema(user_input.get(CONF_HUB_A1_SERIALS, "")),
+                    errors={"base": "cannot_connect"},
+                )
+            except Exception as exc:
+                __LOGGER__.warning("Failed to load Hub A1 serial through app API: %s", exc.__class__.__name__)
+                return self.async_show_form(
+                    step_id="select_devices",
+                    data_schema=self._select_devices_schema(user_input.get(CONF_HUB_A1_SERIALS, "")),
+                    errors={"base": "cannot_connect"},
+                )
+
+            if selected_devices:
+                await self._product_client.bind_devices({"bindSnList": selected_devices})
+
+            products_to_store = self._products + hub_a1_products
+            selected_device_sns = _dedupe(selected_devices + [product.sn for product in hub_a1_products])
             
             # 检查是否存在同名的集成条目
             existing_entry = None
@@ -54,14 +108,16 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
                 # 合并到现有集成条目
                 existing_devices = existing_entry.options.get("devices", [])
                 existing_products = existing_entry.data.get("products", [])
+                existing_hub_a1_serials = parse_hub_a1_serials(existing_entry.options.get(CONF_HUB_A1_SERIALS))
                 
                 # 合并设备列表（去重）
-                merged_devices = list(set(existing_devices + user_input['devices']))
+                merged_devices = _dedupe(list(existing_devices) + selected_device_sns)
+                merged_hub_a1_serials = _dedupe(existing_hub_a1_serials + hub_a1_serials)
                 
                 # 合并产品数据（去重）
                 existing_product_sns = {p.get('sn') if isinstance(p, dict) else p.sn for p in existing_products}
-                new_products = [p for p in self._products if p.sn not in existing_product_sns]
-                merged_products = existing_products + [p.__dict__ if hasattr(p, '__dict__') else p for p in new_products]
+                new_products = [p for p in products_to_store if p.sn not in existing_product_sns]
+                merged_products = existing_products + _serialize_products(new_products)
                 
                 # 更新现有条目
                 self.hass.config_entries.async_update_entry(
@@ -71,7 +127,7 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
                         "token": self._oauth_data["token"],
                         "products": merged_products
                     },
-                    options={"devices": merged_devices}
+                    options={"devices": merged_devices, CONF_HUB_A1_SERIALS: merged_hub_a1_serials}
                 )
                 
                 # 重新加载集成以包含新设备
@@ -85,9 +141,9 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
                     data={
                         "auth_implementation": self._oauth_data["auth_implementation"],
                         "token": self._oauth_data["token"],
-                        "products": self._products
+                        "products": _serialize_products(products_to_store)
                     },
-                    options=user_input,
+                    options={"devices": selected_device_sns, CONF_HUB_A1_SERIALS: hub_a1_serials},
                 )
 
         httpSession = async_get_clientsession(self.hass)
@@ -99,7 +155,7 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
         # print(products.data)
 
         self._product_client = product_client
-        self._products = products.data
+        self._products = products.data or []
 
         # 获取已集成的设备列表
         integrated_devices = set()
@@ -109,9 +165,10 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
         # 过滤掉已经集成过的设备
         available_devices = {
             prod.sn: f"{prod.name} - {prod.sn}"   
-            for prod in products.data
+            for prod in self._products
             if prod.sn not in integrated_devices
         }
+        self._available_devices = available_devices
 
 
         # reconfigure token 
@@ -127,25 +184,21 @@ class OAuth2FlowHandler(config_entry_oauth2_flow.AbstractOAuth2FlowHandler, doma
             return self.async_abort(reason="success")
 
         # 如果没有可用设备，显示错误
-        if not products.data:
-            return self.async_abort(reason="no_devices_available")
-        
-        # 已全部集成
-        if not available_devices:
-            return self.async_abort(reason="all_devices_exists")
-
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    "devices",
-                    default=list(available_devices.keys())
-                ): cv.multi_select(available_devices)
-            }
-        )
-
         return self.async_show_form(
             step_id="select_devices",
-            data_schema=schema,
+            data_schema=self._select_devices_schema(),
+        )
+
+    def _select_devices_schema(self, hub_a1_serials: str = ""):
+        available_devices = getattr(self, "_available_devices", {})
+        return vol.Schema(
+            {
+                vol.Optional(
+                    "devices",
+                    default=list(available_devices.keys())
+                ): cv.multi_select(available_devices),
+                vol.Optional(CONF_HUB_A1_SERIALS, default=hub_a1_serials): str,
+            }
         )
 
     async def async_step_reconfigure(self, user_input=None):

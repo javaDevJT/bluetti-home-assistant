@@ -17,9 +17,21 @@
         "create_entry": {
             "default": "Successfully authenticated"
         },
+        "error": {
+            "cannot_connect": "Failed to connect",
+            "no_devices_available": "Select at least one device or enter a Hub A1 serial number."
+        },
         "step": {
             "pick_implementation": {
                 "title": "Pick authentication method"
+            },
+            "select_devices": {
+                "data": {
+                    "devices": "Devices",
+                    "hub_a1_serials": "Hub A1 serial numbers"
+                },
+                "description": "Select visible BLUETTI devices and optionally enter Hub A1 serial numbers separated by commas, spaces, or new lines.",
+                "title": "Select BLUETTI devices"
             }
         }
     }

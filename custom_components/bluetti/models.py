@@ -201,6 +201,30 @@ class BluettiDevice:
     async def _async_update(self):
         api_client = self._api_client
 
+        if self.model == "HA1":
+            data = await api_client.get_hub_a1_product(self.device_id)
+            self.on_line = data.online
+            self.name = data.name or self.name
+
+            for s in data.stateList:
+                state_obj = self.get_state(s["fnCode"])
+                if state_obj:
+                    state_obj.fn_value = s["fnValue"]
+                else:
+                    self.states.append(
+                        BluettiState(
+                            fn_code=s.get("fnCode"),
+                            fn_name=s.get("fnName") or "",
+                            fn_value=s.get("fnValue"),
+                            fn_type=s.get("fnType"),
+                            support_mode_values=s.get("supportModeValues"),
+                            sensor_info=s.get("sensorInfo"),
+                        )
+                    )
+
+            await self.publish_updates()
+            return
+
         device_status = await api_client.get_device_status(self.device_id)
         # print(device_status.data[0])
         data = device_status.data[0]
@@ -225,6 +249,31 @@ class BluettiDevice:
             state_obj = self.get_state(s["fnCode"])
             if state_obj:
                 state_obj.fn_value = s["fnValue"]
+
+        try:
+            app_states = await api_client.get_app_device_state_overrides(self.device_id)
+        except Exception as exc:
+            __LOGGER__.debug("Unable to load app-side state overrides: %s", exc.__class__.__name__)
+            app_states = []
+
+        for s in app_states:
+            if s.get("fnCode") == "onLine":
+                self.on_line = s["fnValue"]
+                continue
+            state_obj = self.get_state(s["fnCode"])
+            if state_obj:
+                state_obj.fn_value = s["fnValue"]
+            else:
+                self.states.append(
+                    BluettiState(
+                        fn_code=s.get("fnCode"),
+                        fn_name=s.get("fnName") or "",
+                        fn_value=s.get("fnValue"),
+                        fn_type=s.get("fnType"),
+                        support_mode_values=s.get("supportModeValues"),
+                        sensor_info=s.get("sensorInfo"),
+                    )
+                )
 
         await self.publish_updates()
 
